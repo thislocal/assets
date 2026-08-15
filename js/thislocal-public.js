@@ -1,3 +1,4 @@
+/* THIS LOCAL PUBLIC V17.66 - radius independent + diagnostic */
 /* THIS LOCAL public runtime extracted from V17.55. */
 
 /* ---- original script block 6 ---- */
@@ -149,6 +150,13 @@
     return isFinite(rank)&&rank>0?rank:Number.POSITIVE_INFINITY;
   }
 
+  /* V17.68: giữ chặn tọa độ rỗng; public không hiển thị lỗi dữ liệu quản trị. */
+  function validCoordValue(v,min,max){
+    if(v===null||v===undefined||safe(v)==='')return false;
+    var n=Number(v);
+    return isFinite(n)&&n>=min&&n<=max;
+  }
+
   function topInfo(place,userPos,localityLabel){
     var rank=topRankNumber(place);
     if(!isFinite(rank))return null;
@@ -184,7 +192,7 @@
       return {rank:rank,label:'TOP của '+area,scope:'local'};
     }
     if(kind==='radius'){
-      if(!userPos||!isFinite(radius)||radius<=0||!isFinite(Number(place.lat))||!isFinite(Number(place.lng)))return null;
+      if(!userPos||!validCoordValue(userPos.lat,-90,90)||!validCoordValue(userPos.lng,-180,180)||!isFinite(radius)||radius<=0||!validCoordValue(place&&place.lat,-90,90)||!validCoordValue(place&&place.lng,-180,180))return null;
       var km=isFinite(place._distance)?place._distance:haversine(userPos.lat,userPos.lng,Number(place.lat),Number(place.lng));
       if(!isFinite(km)||km>radius)return null;
       return {rank:rank,label:'TOP trong bán kính '+(Math.round(radius*10)/10)+' km',scope:'radius',distance:km};
@@ -2165,10 +2173,15 @@
           var actual=norm(area);if(!actual)return false;
           return wanted.indexOf(actual)>-1||actual.indexOf(wanted)>-1;
         }
+        function validHomeCoord(v,min,max){
+          if(v===null||v===undefined||cleanText(v)==='')return false;
+          var n=Number(v);
+          return isFinite(n)&&n>=min&&n<=max;
+        }
         function radiusMembership(place,scope,loc){
           var radius=Number(place&&place.top_radius_km);
           if(!isFinite(radius)||radius<=0)radius=Number(scope&&scope.radius);
-          if(!loc||!isFinite(Number(loc.lat))||!isFinite(Number(loc.lng))||!isFinite(radius)||radius<=0||!isFinite(Number(place.lat))||!isFinite(Number(place.lng)))return null;
+          if(!loc||!validHomeCoord(loc.lat,-90,90)||!validHomeCoord(loc.lng,-180,180)||!isFinite(radius)||radius<=0||!validHomeCoord(place&&place.lat,-90,90)||!validHomeCoord(place&&place.lng,-180,180))return null;
           var km=haversineHome(Number(loc.lat),Number(loc.lng),Number(place.lat),Number(place.lng));
           if(!isFinite(km)||km>radius)return null;
           return{radius:radius,distance:km};
@@ -2177,24 +2190,28 @@
           var rank=rankNumber(place);if(!isFinite(rank))return[];
           var scope=scopeOf(place),out=[];
 
-          /* Phạm vi gốc. */
+          /* Giữ nguyên TOP THIS LOCAL + TOP khu vực đang chạy ổn. */
           if(scope.kind==='global')out.push({rank:rank,group:'global',original:'global',label:'TOP THIS LOCAL',distance:NaN});
           if(scope.kind==='local'&&areaMatches(place,scope,loc)){
             out.push({rank:rank,group:'local',original:'local',label:'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'),distance:NaN});
-            /* Nếu quản trị đồng thời chọn TOP khu vực + TOP bán kính, top_radius_km chính là cờ phạm vi bán kính. */
-            var localRadius=radiusMembership(place,scope,loc);
-            if(localRadius)out.push({rank:rank,group:'radius',original:'radius',label:'TOP '+(Math.round(localRadius.radius*10)/10)+' km',distance:localRadius.distance});
-          }
-          if(scope.kind==='radius'){
-            var ownRadius=radiusMembership(place,scope,loc);
-            if(ownRadius)out.push({rank:rank,group:'radius',original:'radius',label:'TOP '+(Math.round(ownRadius.radius*10)/10)+' km',distance:ownRadius.distance});
           }
 
-          /* V17.58: TOP THIS LOCAL được kế thừa xuống phạm vi nhỏ hơn khi thực tế phù hợp. */
-          if(scope.kind==='global'){
-            if(areaMatches(place,scope,loc))out.push({rank:rank,group:'local',original:'global',label:'TOP THIS LOCAL',distance:NaN,inherited:true});
-            var inheritedRadius=radiusMembership(place,scope,loc);
-            if(inheritedRadius)out.push({rank:rank,group:'radius',original:'global',label:'TOP THIS LOCAL',distance:inheritedRadius.distance,radius:inheritedRadius.radius,inherited:true});
+          if(scope.kind==='global'&&areaMatches(place,scope,loc)){
+            out.push({rank:rank,group:'local',original:'global',label:'TOP THIS LOCAL',distance:NaN,inherited:true});
+          }
+
+          /* V17.66: TOP bán kính là phạm vi độc lập.
+             Chỉ cần top_radius_km > 0 thì luôn kiểm tra khoảng cách,
+             không phụ thuộc top_scope là THIS_LOCAL / LOCALITY / RADIUS. */
+          var configuredRadius=Number(place&&place.top_radius_km);
+          var radiusEnabled=(isFinite(configuredRadius)&&configuredRadius>0)||scope.kind==='radius';
+          if(radiusEnabled){
+            var rm=radiusMembership(place,scope,loc);
+            if(rm){
+              var origin=scope.kind==='global'?'global':(scope.kind==='local'?'local':'radius');
+              var label=scope.kind==='global'?'TOP THIS LOCAL':(scope.kind==='local'?'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'):'TOP bán kính');
+              out.push({rank:rank,group:'radius',original:origin,label:label,distance:rm.distance,radius:rm.radius,inherited:scope.kind!=='radius'});
+            }
           }
           return out;
         }
@@ -2232,8 +2249,8 @@
           card.addEventListener('click',function(){openPlaceSearchResult(p);});
           return card;
         }
-        function makeGroup(kind,title,subtitle,items){
-          if(!items.length)return null;
+        function makeGroup(kind,title,subtitle,items,emptyText){
+          if(!items.length&&!emptyText)return null;
           var wrap=document.createElement('section');wrap.className='tl-home-top-group is-'+kind;
           var hd=document.createElement('div');hd.className='tl-home-top-group-head';
           var copy=document.createElement('div');
@@ -2241,8 +2258,16 @@
           if(subtitle){var sub=document.createElement('p');sub.textContent=subtitle;copy.appendChild(sub);}
           var count=document.createElement('span');count.className='tl-home-top-group-count';count.textContent=items.length+' địa điểm';
           hd.appendChild(copy);hd.appendChild(count);wrap.appendChild(hd);
-          var grid=document.createElement('div');grid.className='tl-home-top-grid';items.forEach(function(item){grid.appendChild(makeCard(item));});wrap.appendChild(grid);
+          if(items.length){
+            var grid=document.createElement('div');grid.className='tl-home-top-grid';items.forEach(function(item){grid.appendChild(makeCard(item));});wrap.appendChild(grid);
+          }else if(emptyText){
+            var empty=document.createElement('div');empty.className='tl-home-top-status';empty.textContent=emptyText;wrap.appendChild(empty);
+          }
           return wrap;
+        }
+        function radiusDiagnostic(loc){
+          if(!loc||!validHomeCoord(loc.lat,-90,90)||!validHomeCoord(loc.lng,-180,180))return 'Bật vị trí để xem TOP bán kính quanh bạn.';
+          return 'Hiện chưa có địa điểm TOP bán kính phù hợp với vị trí của bạn.';
         }
         function render(loc){
           var buckets={global:[],local:[],radius:[]};
@@ -2255,7 +2280,7 @@
           }
           var g1=makeGroup('global','TOP THIS LOCAL','Những địa điểm TOP trên toàn hệ thống.',buckets.global);if(g1)groups.appendChild(g1);
           var g2=makeGroup('local',area?('TOP khu vực '+area):'TOP khu vực của bạn',area?'Bao gồm TOP khu vực và TOP THIS LOCAL nằm tại khu vực này.':'Bật vị trí để xác định khu vực.',buckets.local);if(g2)groups.appendChild(g2);
-          var g3=makeGroup('radius','TOP quanh bạn','Bao gồm TOP bán kính và TOP THIS LOCAL có bán kính TOP phù hợp với vị trí hiện tại.',buckets.radius);if(g3)groups.appendChild(g3);
+          var g3=makeGroup('radius','TOP bán kính quanh bạn','Chỉ những địa điểm có Bán kính TOP (km) và tọa độ phù hợp với vị trí hiện tại.',buckets.radius,buckets.radius.length?'':radiusDiagnostic(loc));if(g3)groups.appendChild(g3);
           if(!groups.childNodes.length){var empty=document.createElement('div');empty.className='tl-home-top-status';empty.textContent='Hiện chưa có địa điểm TOP phù hợp.';groups.appendChild(empty);}
         }
         function load(){
@@ -2265,7 +2290,7 @@
           function finish(data){if(done)return;done=true;clearTimeout(timer);try{delete window[callback];}catch(e){}if(script.parentNode)script.parentNode.removeChild(script);candidates=data&&data.ok&&Array.isArray(data.places)?data.places:[];render(getSavedLocation());}
           window[callback]=function(data){finish(data);};
           script.onerror=function(){finish(null);};
-          script.src=api+'?action=homepageTop&callback='+encodeURIComponent(callback)+'&_v=17.65';document.head.appendChild(script);
+          script.src=api+'?action=homepageTop&callback='+encodeURIComponent(callback)+'&_v=17.68';document.head.appendChild(script);
           timer=setTimeout(function(){finish(null);},15000);
         }
         document.addEventListener('tl:locationchange',function(ev){render(ev&&ev.detail?ev.detail:getSavedLocation());});
@@ -3426,7 +3451,7 @@
     return'OPEN';
   }
   function mapsUrl(p,pos){
-    var dest=(isFinite(Number(p.lat))&&isFinite(Number(p.lng)))?Number(p.lat)+','+Number(p.lng):(clean(p.address)||clean(p.name));
+    var dest=(clean(p&&p.lat)!==''&&clean(p&&p.lng)!==''&&isFinite(Number(p.lat))&&isFinite(Number(p.lng)))?Number(p.lat)+','+Number(p.lng):(clean(p.address)||clean(p.name));
     var u='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest);
     if(pos)u+='&origin='+encodeURIComponent(pos.lat+','+pos.lng);
     return u+'&travelmode=driving';
@@ -3503,7 +3528,7 @@
     }
     if(kind==='radius'){
       var km=isFinite(Number(p&&p._distance))?Number(p._distance):NaN;
-      if(!isFinite(km)&&pos&&isFinite(Number(pos.lat))&&isFinite(Number(pos.lng))&&isFinite(Number(p.lat))&&isFinite(Number(p.lng))){
+      if(!isFinite(km)&&pos&&clean(pos.lat)!==''&&clean(pos.lng)!==''&&clean(p&&p.lat)!==''&&clean(p&&p.lng)!==''&&isFinite(Number(pos.lat))&&isFinite(Number(pos.lng))&&isFinite(Number(p.lat))&&isFinite(Number(p.lng))){
         var R=6371,toRad=Math.PI/180,dLat=(Number(p.lat)-Number(pos.lat))*toRad,dLng=(Number(p.lng)-Number(pos.lng))*toRad;
         var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(Number(pos.lat)*toRad)*Math.cos(Number(p.lat)*toRad)*Math.sin(dLng/2)*Math.sin(dLng/2);
         km=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
