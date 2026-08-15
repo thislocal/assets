@@ -1133,7 +1133,7 @@
       areaGrid.appendChild(localityField);
       form.appendChild(areaGrid);
 
-      /* V17.69: tọa độ là dữ liệu bắt buộc khi đề xuất/cập nhật địa điểm. */
+      /* V17.70: tọa độ là dữ liệu bắt buộc khi đề xuất/cập nhật địa điểm. */
       var coordGrid=el('div','vlc-grid');
       var latField=inputField('Vĩ độ','lat',place&&place.lat,true,'text');
       var lngField=inputField('Kinh độ','lng',place&&place.lng,true,'text');
@@ -1149,8 +1149,12 @@
       var lngError=addError(lngField,'Kinh độ là bắt buộc và phải nằm trong khoảng -180 đến 180.');
       coordGrid.appendChild(latField);coordGrid.appendChild(lngField);
       form.appendChild(coordGrid);
-      var coordHelp=el('div','vlc-field-help','Ví dụ đúng: Vĩ độ 22.480123 · Kinh độ 103.971234. Chỉ nhập số, không nhập chữ N/E và không đảo hai ô. Vĩ độ và Kinh độ càng chính xác, địa điểm càng dễ được hiển thị đúng cho người dùng thực tế ở gần khu vực đó. Nếu đang ở tại địa điểm, hãy dùng nút “Dùng vị trí hiện tại của tôi” bên dưới để lấy tọa độ chính xác hơn.');
+      var coordHelp=el('div','vlc-field-help','Ví dụ đúng: Vĩ độ 22.480123 · Kinh độ 103.971234. Chỉ nhập số, không nhập chữ N/E và không đảo hai ô. Vĩ độ và Kinh độ càng chính xác, địa điểm càng dễ được hiển thị đúng cho người dùng thực tế ở gần khu vực đó.');
       form.appendChild(coordHelp);
+      var geoBtn=el('button','vlc-btn vlc-btn-soft','Dùng vị trí hiện tại của tôi');geoBtn.type='button';
+      geoBtn.setAttribute('aria-label','Tự động lấy Vĩ độ và Kinh độ từ vị trí hiện tại');
+      form.appendChild(geoBtn);
+      form.appendChild(el('div','vlc-field-help','Nếu bạn đang có mặt tại địa điểm, hãy bấm nút trên để tự động điền Vĩ độ và Kinh độ bằng GPS.'));
 
       form.appendChild(inputField('Link Google Maps','map_url',place&&place.map_url,false,'url'));
       var websiteField=inputField('Website','business_url',place&&place.business_url,false,'text');
@@ -1236,9 +1240,6 @@
       grid3.appendChild(inputField('Tên người gửi (không bắt buộc)','submitter_name','',false));
       grid3.appendChild(inputField('Liên hệ (không bắt buộc)','submitter_contact','',false));
       form.appendChild(grid3);
-
-      var geoBtn=el('button','vlc-btn vlc-btn-soft','Dùng vị trí hiện tại của tôi');geoBtn.type='button';
-      form.appendChild(geoBtn);
 
       [latInp,lngInp].forEach(function(inp){
         inp.addEventListener('input',function(){
