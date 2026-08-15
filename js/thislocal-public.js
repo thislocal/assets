@@ -1,6 +1,7 @@
 /* THIS LOCAL PUBLIC V17.72 - DMS proposal coordinates + mobile GPS placement */
 /* THIS LOCAL PUBLIC V17.66 - radius independent + diagnostic */
 /* THIS LOCAL public runtime extracted from V17.55. */
+/* V17.73 - optional coordinates + Google/Apple Maps bidirectional sync. */
 
 /* ---- original script block 6 ---- */
 (function(){
@@ -1165,35 +1166,153 @@
         return NaN;
       }
 
-      /* V17.72: tọa độ bắt buộc, nhận cả thập phân và DMS. */
+      /* V17.73: tọa độ KHÔNG bắt buộc. Có thể lấy từ Google Maps / Apple Maps / GPS. */
       var coordGrid=el('div','vlc-grid');
-      var latField=inputField('Vĩ độ','lat',place&&place.lat,true,'text');
-      var lngField=inputField('Kinh độ','lng',place&&place.lng,true,'text');
+      var latField=inputField('Vĩ độ','lat',place&&place.lat,false,'text');
+      var lngField=inputField('Kinh độ','lng',place&&place.lng,false,'text');
       var latInp=latField.querySelector('input');
       var lngInp=lngField.querySelector('input');
       latInp.inputMode='text';lngInp.inputMode='text';
       latInp.autocomplete='off';lngInp.autocomplete='off';
       latInp.placeholder='22.483833 hoặc 22°29\'01.8"N';
       lngInp.placeholder='103.972194 hoặc 103°58\'19.9"E';
-      addHelp(latField,'Bắt buộc. Nhập 22.483833 hoặc 22°29\'01.8"N.');
-      addHelp(lngField,'Bắt buộc. Nhập 103.972194 hoặc 103°58\'19.9"E.');
-      var latError=addError(latField,'Vĩ độ không hợp lệ. Dùng dạng thập phân hoặc DMS, ví dụ 22.483833 hoặc 22°29\'01.8"N.');
-      var lngError=addError(lngField,'Kinh độ không hợp lệ. Dùng dạng thập phân hoặc DMS, ví dụ 103.972194 hoặc 103°58\'19.9"E.');
+      addHelp(latField,'Không bắt buộc. Nếu biết tọa độ, nhập 22.483833 hoặc 22°29\'01.8"N.');
+      addHelp(lngField,'Không bắt buộc. Nếu biết tọa độ, nhập 103.972194 hoặc 103°58\'19.9"E.');
+      var latError=addError(latField,'Vĩ độ không hợp lệ. Nếu nhập tọa độ, hãy nhập đủ cả Vĩ độ và Kinh độ.');
+      var lngError=addError(lngField,'Kinh độ không hợp lệ. Nếu nhập tọa độ, hãy nhập đủ cả Vĩ độ và Kinh độ.');
       coordGrid.appendChild(latField);coordGrid.appendChild(lngField);
 
-      var coordHelp=el('div','vlc-field-help','Có thể nhập tọa độ thập phân hoặc DMS. Ví dụ: Vĩ độ 22.483833 hoặc 22°29\'01.8"N · Kinh độ 103.972194 hoặc 103°58\'19.9"E. Không đảo hai ô. Tọa độ càng chính xác, địa điểm càng dễ tiếp cận đúng người dùng thực tế ở gần khu vực đó.');
+      var coordHelp=el('div','vlc-field-help','Vĩ độ/Kinh độ không bắt buộc. Nếu bạn nhập hoặc lấy được tọa độ từ Maps/GPS, THIS LOCAL sẽ xác định vị trí địa điểm chính xác hơn và dễ đưa địa điểm tới đúng người dùng thực tế ở gần khu vực đó.');
       coordHelp.style.gridColumn='1 / -1';coordGrid.appendChild(coordHelp);
 
-      /* Nút GPS nằm trong chính khối tọa độ để mobile không bị rơi xuống cuối form. */
+      /* Nút GPS luôn nằm ngay dưới 2 ô tọa độ, kể cả mobile. */
       var geoField=el('div','vlc-field vlc-coordinate-gps');geoField.style.gridColumn='1 / -1';
       var geoBtn=el('button','vlc-btn vlc-btn-soft','Dùng vị trí hiện tại của tôi');geoBtn.type='button';
       geoBtn.style.width='100%';geoBtn.setAttribute('aria-label','Tự động lấy Vĩ độ và Kinh độ từ vị trí hiện tại');
       geoField.appendChild(geoBtn);
-      geoField.appendChild(el('div','vlc-field-help','Nếu bạn đang có mặt tại địa điểm, bấm nút này để GPS tự điền Vĩ độ và Kinh độ.'));
+      geoField.appendChild(el('div','vlc-field-help','Chỉ dùng nút này khi bạn đang có mặt tại đúng địa điểm muốn đề xuất.'));
       coordGrid.appendChild(geoField);
       form.appendChild(coordGrid);
 
-      form.appendChild(inputField('Link Google Maps','map_url',place&&place.map_url,false,'url'));
+      /* Maps: cả Google Maps và Apple Maps đều có thể trả ngược tọa độ. */
+      var mapsGrid=el('div','vlc-grid');
+      var googleMapField=inputField('Google Maps URL','map_url',place&&place.map_url,false,'text');
+      var appleMapField=inputField('Apple Maps URL','apple_map_url',place&&place.apple_map_url,false,'text');
+      var googleMapInput=googleMapField.querySelector('input');
+      var appleMapInput=appleMapField.querySelector('input');
+      googleMapInput.placeholder='Dán link Google Maps đã sao chép';
+      appleMapInput.placeholder='Dán link Apple Maps đã sao chép';
+      var googleMapError=addError(googleMapField,'Link này không phải Google Maps. Hãy dán link Google Maps vào đúng ô.');
+      var appleMapError=addError(appleMapField,'Link này không phải Apple Maps. Hãy dán link Apple Maps vào đúng ô.');
+      var googleMapStatus=el('div','vlc-field-help','');googleMapField.appendChild(googleMapStatus);
+      var appleMapStatus=el('div','vlc-field-help','');appleMapField.appendChild(appleMapStatus);
+      mapsGrid.appendChild(googleMapField);mapsGrid.appendChild(appleMapField);
+      var mapsHelp=el('div','vlc-field-help','Cách lấy link: mở Google Maps hoặc Apple Maps → chọn đúng địa điểm → Chia sẻ → Sao chép đường liên kết → dán vào đúng ô tương ứng. Hệ thống sẽ thử tự lấy Vĩ độ/Kinh độ từ link. Nếu dán nhầm loại link, hệ thống sẽ báo lại.');
+      mapsHelp.style.gridColumn='1 / -1';mapsGrid.appendChild(mapsHelp);
+      form.appendChild(mapsGrid);
+
+      function normalizeMapUrl(value){
+        var raw=safe(value);if(!raw)return'';
+        if(!/^https?:\/\//i.test(raw))raw='https://'+raw.replace(/^\/+/, '');
+        try{return new URL(raw).href;}catch(e){return'';}
+      }
+      function mapLinkKind(value){
+        var normalized=normalizeMapUrl(value);if(!normalized)return'';
+        try{
+          var h=new URL(normalized).hostname.toLowerCase();
+          if(h==='maps.app.goo.gl'||h==='goo.gl'||h==='google.com'||h==='www.google.com'||h==='maps.google.com'||/\.google\.com$/.test(h))return'google';
+          if(h==='maps.apple.com')return'apple';
+        }catch(e){}
+        return'';
+      }
+      function pairFromText(value){
+        var text=safe(value);if(!text)return null;
+        try{text=decodeURIComponent(text);}catch(e){}
+        var m=text.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+        if(!m)return null;
+        var a=Number(m[1]),b=Number(m[2]);
+        if(!isFinite(a)||!isFinite(b)||a<-90||a>90||b<-180||b>180)return null;
+        return{lat:a,lng:b};
+      }
+      function coordsFromMapUrl(value,kind){
+        var normalized=normalizeMapUrl(value);if(!normalized)return null;
+        try{
+          var u=new URL(normalized),href='';
+          try{href=decodeURIComponent(u.href);}catch(e){href=u.href;}
+          var m;
+          if(kind==='google'){
+            m=href.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,|\/|$)/);
+            if(m){var g1=pairFromText(m[1]+','+m[2]);if(g1)return g1;}
+            m=href.match(/!3d(-?\d+(?:\.\d+)?).*?!4d(-?\d+(?:\.\d+)?)/);
+            if(m){var g2=pairFromText(m[1]+','+m[2]);if(g2)return g2;}
+            var gp=['query','q','center','destination','origin'];
+            for(var i=0;i<gp.length;i++){var gv=u.searchParams.get(gp[i]),gc=pairFromText(gv);if(gc)return gc;}
+          }else if(kind==='apple'){
+            var ap=['ll','sll','near','coordinate','center','daddr','q'];
+            for(var j=0;j<ap.length;j++){var av=u.searchParams.get(ap[j]),ac=pairFromText(av);if(ac)return ac;}
+          }
+        }catch(e){}
+        return null;
+      }
+      function canonicalMapUrls(lat,lng){
+        var a=Number(lat),b=Number(lng);if(!isFinite(a)||!isFinite(b))return null;
+        var pair=Number(a.toFixed(6)).toFixed(6)+','+Number(b.toFixed(6)).toFixed(6);
+        return{
+          google:'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(pair),
+          apple:'https://maps.apple.com/?ll='+encodeURIComponent(pair)
+        };
+      }
+      function setGeneratedMap(inp,url){
+        if(!inp||!url)return;
+        if(!safe(inp.value)||inp.dataset.tlAutoMap==='1'){inp.value=url;inp.dataset.tlAutoMap='1';}
+      }
+      function syncMapLinksFromCoords(){
+        var lat=parseProposalCoordinate(latInp.value,'lat'),lng=parseProposalCoordinate(lngInp.value,'lng');
+        if(!isFinite(lat)||!isFinite(lng))return;
+        var urls=canonicalMapUrls(lat,lng);if(!urls)return;
+        setGeneratedMap(googleMapInput,urls.google);setGeneratedMap(appleMapInput,urls.apple);
+      }
+      function applyMapCoordinates(coords,sourceKind){
+        if(!coords||!isFinite(Number(coords.lat))||!isFinite(Number(coords.lng)))return false;
+        latInp.value=Number(Number(coords.lat).toFixed(6)).toFixed(6);
+        lngInp.value=Number(Number(coords.lng).toFixed(6)).toFixed(6);
+        latInp.classList.remove('is-invalid');lngInp.classList.remove('is-invalid');
+        latError.classList.remove('is-show');lngError.classList.remove('is-show');
+        var urls=canonicalMapUrls(coords.lat,coords.lng);
+        if(urls){
+          if(sourceKind!=='google')setGeneratedMap(googleMapInput,urls.google);
+          if(sourceKind!=='apple')setGeneratedMap(appleMapInput,urls.apple);
+        }
+        return true;
+      }
+      function validateMapField(inp,kind,err){
+        var raw=safe(inp&&inp.value);if(!raw){err.classList.remove('is-show');inp.classList.remove('is-invalid');return true;}
+        var normalized=normalizeMapUrl(raw);
+        if(!normalized||mapLinkKind(normalized)!==kind){inp.classList.add('is-invalid');err.classList.add('is-show');return false;}
+        inp.value=normalized;inp.classList.remove('is-invalid');err.classList.remove('is-show');return true;
+      }
+      function resolveMapField(inp,kind,err,status){
+        var raw=safe(inp&&inp.value);status.textContent='';
+        if(!raw){err.classList.remove('is-show');inp.classList.remove('is-invalid');return;}
+        if(!validateMapField(inp,kind,err)){status.textContent=kind==='google'?'Hãy mở Google Maps → Chia sẻ → Sao chép đường liên kết rồi dán lại.':'Hãy mở Apple Maps → Chia sẻ → Sao chép đường liên kết rồi dán lại.';return;}
+        inp.dataset.tlAutoMap='0';
+        var direct=coordsFromMapUrl(inp.value,kind);
+        if(direct){applyMapCoordinates(direct,kind);status.textContent='Đã lấy Vĩ độ/Kinh độ từ '+(kind==='google'?'Google Maps.':'Apple Maps.');return;}
+        if(!VLC_API_URL||VLC_API_URL.indexOf('DAN_URL_')===0){status.textContent='Link hợp lệ nhưng chưa tự đọc được tọa độ. Bạn vẫn có thể gửi đề xuất.';return;}
+        status.textContent='Đang đọc vị trí từ link '+(kind==='google'?'Google Maps...':'Apple Maps...');
+        jsonp(VLC_API_URL+'?action=resolveMapUrl&kind='+encodeURIComponent(kind)+'&url='+encodeURIComponent(inp.value),function(e,data){
+          if(e||!data||!data.ok){status.textContent='Không đọc được tọa độ từ link này. Hãy kiểm tra lại link hoặc để trống tọa độ.';return;}
+          if(data.resolved_url&&mapLinkKind(data.resolved_url)===kind&&inp.dataset.tlAutoMap!=='1')inp.value=data.resolved_url;
+          if(data.lat!==null&&data.lng!==null&&isFinite(Number(data.lat))&&isFinite(Number(data.lng))){applyMapCoordinates({lat:Number(data.lat),lng:Number(data.lng)},kind);status.textContent='Đã lấy Vĩ độ/Kinh độ từ '+(kind==='google'?'Google Maps.':'Apple Maps.');}
+          else status.textContent='Link Maps hợp lệ nhưng chưa tìm thấy tọa độ trong link. Bạn vẫn có thể gửi đề xuất.';
+        });
+      }
+
+      googleMapInput.addEventListener('input',function(){googleMapInput.dataset.tlAutoMap='0';googleMapInput.classList.remove('is-invalid');googleMapError.classList.remove('is-show');googleMapStatus.textContent='';});
+      appleMapInput.addEventListener('input',function(){appleMapInput.dataset.tlAutoMap='0';appleMapInput.classList.remove('is-invalid');appleMapError.classList.remove('is-show');appleMapStatus.textContent='';});
+      googleMapInput.addEventListener('blur',function(){resolveMapField(googleMapInput,'google',googleMapError,googleMapStatus);});
+      appleMapInput.addEventListener('blur',function(){resolveMapField(appleMapInput,'apple',appleMapError,appleMapStatus);});
+
       var websiteField=inputField('Website','business_url',place&&place.business_url,false,'text');
       websiteField.querySelector('input').placeholder='Ví dụ: thislocal.vn';
       addHelp(websiteField,'Có thể nhập có hoặc không có https://.');
@@ -1281,8 +1400,10 @@
       [[latInp,'lat',latError],[lngInp,'lng',lngError]].forEach(function(pair){
         var inp=pair[0],axis=pair[1],err=pair[2];
         inp.addEventListener('input',function(){inp.classList.remove('is-invalid');err.classList.remove('is-show');});
-        inp.addEventListener('blur',function(){normalizeProposalCoordInput(inp,axis);});
+        inp.addEventListener('blur',function(){normalizeProposalCoordInput(inp,axis);syncMapLinksFromCoords();});
       });
+      /* Nếu địa điểm cũ đã có tọa độ thì tự tạo sẵn 2 link Maps. */
+      syncMapLinksFromCoords();
 
       phoneInput.addEventListener('input',function(){
         phoneInput.classList.remove('is-invalid');
@@ -1365,17 +1486,21 @@
         }
 
         var latRaw=safe(latInp.value),lngRaw=safe(lngInp.value);
-        var latNum=parseProposalCoordinate(latRaw,'lat'),lngNum=parseProposalCoordinate(lngRaw,'lng');
+        var latNum=latRaw?parseProposalCoordinate(latRaw,'lat'):null,lngNum=lngRaw?parseProposalCoordinate(lngRaw,'lng'):null;
         latInp.classList.remove('is-invalid');lngInp.classList.remove('is-invalid');
         latError.classList.remove('is-show');lngError.classList.remove('is-show');
-        if(!latRaw||!isFinite(latNum)){
-          latInp.classList.add('is-invalid');latError.classList.add('is-show');latInp.focus();return false;
+        /* Tọa độ không bắt buộc; nhưng nếu nhập thì cần đủ cả 2 ô và phải hợp lệ. */
+        if(latRaw||lngRaw){
+          if(!latRaw||!isFinite(latNum)){latInp.classList.add('is-invalid');latError.classList.add('is-show');latInp.focus();return false;}
+          if(!lngRaw||!isFinite(lngNum)){lngInp.classList.add('is-invalid');lngError.classList.add('is-show');lngInp.focus();return false;}
+          latInp.value=Number(latNum.toFixed(6)).toFixed(6);
+          lngInp.value=Number(lngNum.toFixed(6)).toFixed(6);
+          syncMapLinksFromCoords();
+        }else{
+          latInp.value='';lngInp.value='';
         }
-        if(!lngRaw||!isFinite(lngNum)){
-          lngInp.classList.add('is-invalid');lngError.classList.add('is-show');lngInp.focus();return false;
-        }
-        latInp.value=Number(latNum.toFixed(6)).toFixed(6);
-        lngInp.value=Number(lngNum.toFixed(6)).toFixed(6);
+        if(!validateMapField(googleMapInput,'google',googleMapError)){googleMapInput.focus();return false;}
+        if(!validateMapField(appleMapInput,'apple',appleMapError)){appleMapInput.focus();return false;}
 
         if(!valid24Time(openTimeInput.value)){openTimeInput.classList.add('is-invalid');openTimeError.classList.add('is-show');openTimeInput.focus();return false;}
         if(!valid24Time(closeTimeInput.value)){closeTimeInput.classList.add('is-invalid');closeTimeError.classList.add('is-show');closeTimeInput.focus();return false;}
@@ -1390,10 +1515,7 @@
         if(websiteInput&&safe(websiteInput.value)){
           websiteInput.value=websiteUrl(websiteInput.value);
         }
-        var mapInput=form.querySelector('[name="map_url"]');
-        if(mapInput&&safe(mapInput.value)&&!/^https?:\/\//i.test(safe(mapInput.value))){
-          mapInput.value='https://'+safe(mapInput.value).replace(/^\/+/, '');
-        }
+        /* map_url và apple_map_url đã được chuẩn hóa/kiểm tra ở validateMapField(). */
 
         var selectedStatus=type==='update'?(form.querySelector('[name="business_status_choice"]:checked')||{}).value||currentPlaceStatus:'OPEN';
         hiddenBusinessStatus.value=selectedStatus;
@@ -1409,6 +1531,7 @@
         navigator.geolocation.getCurrentPosition(function(pos){
           latInp.value=String(Math.round(Number(pos.coords.latitude)*1000000)/1000000);
           lngInp.value=String(Math.round(Number(pos.coords.longitude)*1000000)/1000000);
+          syncMapLinksFromCoords();
           latInp.classList.remove('is-invalid');lngInp.classList.remove('is-invalid');
           latError.classList.remove('is-show');lngError.classList.remove('is-show');
           reverseCurrentLocality(pos,function(meta){
@@ -1451,8 +1574,10 @@
           '',
           'Tên địa điểm: '+safe(form.querySelector('[name="name"]').value),
           'Địa chỉ: '+safe(form.querySelector('[name="address"]').value),
-          'Vĩ độ: '+safe(latInp.value),
-          'Kinh độ: '+safe(lngInp.value),
+          safe(latInp.value) ? 'Vĩ độ: '+safe(latInp.value) : '',
+          safe(lngInp.value) ? 'Kinh độ: '+safe(lngInp.value) : '',
+          safe(googleMapInput.value) ? 'Google Maps: '+safe(googleMapInput.value) : '',
+          safe(appleMapInput.value) ? 'Apple Maps: '+safe(appleMapInput.value) : '',
           hiddenPhone.value ? 'Điện thoại: '+hiddenPhone.value : '',
           safe(form.querySelector('[name="business_url"]').value) ? 'Website: '+safe(form.querySelector('[name="business_url"]').value) : '',
           hiddenHours.value ? 'Giờ: '+hiddenHours.value : '',
