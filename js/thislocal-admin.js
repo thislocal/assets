@@ -1,4 +1,4 @@
-/* THIS LOCAL ADMIN V17.80 - canonical category selector + suggestion ID + verified approval view */
+/* THIS LOCAL ADMIN V17.81 - canonical category selector + suggestion ID + verified approval view */
 /* V17.80: after approval switch to APPROVED and reopen exact suggestion ID, avoiding confusion with duplicate pending submissions. */
 /* THIS LOCAL ADMIN V17.72 - DMS/decimal coordinate normalization */
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
@@ -10,7 +10,7 @@
 
   var PROJECT='https://dhxawrbtzloypojwmksn.supabase.co';
   var API=PROJECT+'/functions/v1/this-local-admin-api';
-  var ADMIN_BUILD='17.80',lastApiVersion='';
+  var ADMIN_BUILD='17.81',lastApiVersion='';
   var KKEY='tl_admin_publishable_key_v2',KEMAIL='tl_admin_email_v2',KACCESS='tl_admin_access_v2',KREFRESH='tl_admin_refresh_v2';
 
   function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
@@ -59,6 +59,8 @@
       else if(typeof d.message==='string')msg=d.message;
       else if(typeof d.msg==='string')msg=d.msg;
       if(!msg&&raw)msg=raw;
+      if(d&&d.detail)msg+=(msg?'\n':'')+String(d.detail);
+      if(d&&d.api_version)msg+=(msg?'\n':'')+'API: '+String(d.api_version);
       throw new Error(msg||('HTTP '+r.status));
     }
     return d;
@@ -284,7 +286,7 @@
     var actions=node('div','tla-actions'),save=node('button','tla-btn primary','Lưu thay đổi');save.type='button';actions.appendChild(save);
     if(p.id){var del=node('button','tla-btn danger','Xóa địa điểm');del.type='button';del.onclick=async function(){if(!confirm('Xóa vĩnh viễn địa điểm này? Ratings liên quan cũng có thể bị xóa theo khóa ngoại.'))return;try{await api('',{method:'POST',body:JSON.stringify({action:'deletePlace',id:p.id})});state.places.active='';render()}catch(e){errBox(detail,e.message)}};actions.appendChild(del)}
     form.appendChild(actions);
-    save.onclick=async function(){try{save.disabled=true;if(!categoryCtl.input.value)throw new Error('Hãy chọn Danh mục / Category chuẩn trước khi lưu.');var data=collect(form,p);applyTopScopes(data,form);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
+    save.onclick=async function(){try{save.disabled=true;var data=collect(form,p);applyTopScopes(data,form);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
   }
 
 
@@ -495,6 +497,10 @@
       form.appendChild(note.wrap);
       detail.appendChild(form);
 
+      var reviewStatus=node('div','tla-note','Sẵn sàng duyệt Suggestion ID: '+clean(s.id));
+      reviewStatus.style.marginTop='12px';
+      reviewStatus.style.fontWeight='700';
+      detail.appendChild(reviewStatus);
       var act=node('div','tla-actions');
       if(uiStatus==='PENDING'){
         var yes=node('button','tla-btn primary','Duyệt & lưu'),no=node('button','tla-btn danger','Từ chối');
@@ -523,7 +529,14 @@
 
           try{
             yes.disabled=no.disabled=true;
-            if(!catCtl.input.value)throw new Error('Hãy chọn Danh mục / Category chuẩn trước khi duyệt.');
+            yes.textContent='Đang duyệt...';
+            reviewStatus.className='tla-note';
+            reviewStatus.textContent='Đang gửi yêu cầu duyệt Suggestion ID: '+s.id+' ...';
+            try{reviewStatus.scrollIntoView({behavior:'smooth',block:'nearest'});}catch(_e){}
+            if(!catCtl.input.value&&clean(catCtl.category.value)){
+              var autoId=resolveCategoryIdClient({category:catCtl.category.value,parent_category:catCtl.parent.value});
+              if(autoId){catCtl.input.value=autoId;catCtl.input.dispatchEvent(new Event('change'));}
+            }
             var fp=collect(form,p);
             applyTopScopes(fp,form);
             fp.approval_status='APPROVED';
@@ -544,7 +557,7 @@
             });
 
             if(!reviewResult||reviewResult.status!=='APPROVED'||reviewResult.verified_update!==true){
-              throw new Error('Admin API chưa xác nhận được UPDATE + APPROVED. Hãy chắc chắn đã deploy this-local-admin-api V17.78.');
+              throw new Error('Admin API chưa xác nhận được UPDATE + APPROVED. Hãy kiểm tra API version hiển thị trên đầu trang.');
             }
             if(reviewMode==='update'&&clean(reviewResult.place_id)!==targetPlaceId){
               throw new Error('ID địa điểm được cập nhật không khớp ID đã chọn. Dừng để tránh sửa nhầm dữ liệu.');
@@ -553,15 +566,25 @@
               throw new Error('Địa chỉ mới chưa được ghi vào địa điểm gốc. Không chuyển đề xuất sang đã duyệt.');
             }
 
+            var exact=await api('?action=suggestionDetail&id='+encodeURIComponent(s.id));
+            var exactStatus=clean(exact&&exact.suggestion&&exact.suggestion.status).toUpperCase();
+            if(exactStatus!=='APPROVED')throw new Error('API đã trả thành công nhưng khi đọc lại Suggestion ID '+s.id+' vẫn là '+(exactStatus||'không xác định')+'.');
             var remainingDup=Number(reviewResult.remaining_duplicate_pending);if(!isFinite(remainingDup))remainingDup=samePending.length;
+            reviewStatus.className='tla-note';
+            reviewStatus.textContent='ĐÃ DUYỆT · '+s.id+' · APPROVED';
             state.suggestions.active=s.id;
             state.suggestions.status='APPROVED';
             await suggestions(document.getElementById('tlaContent'));
             alert('Đã duyệt thành công Suggestion ID: '+s.id+'\nTrạng thái: APPROVED'+(remainingDup?'\nCòn '+remainingDup+' đề xuất trùng đang PENDING.':''));
           }catch(e){
-            errBox(detail,e.message||String(e));
+            var em=e&&e.message?e.message:String(e);
+            reviewStatus.className='tla-error';
+            reviewStatus.textContent='DUYỆT KHÔNG THÀNH CÔNG: '+em;
+            errBox(detail,em);
+            try{alert('Duyệt không thành công\n\n'+em);}catch(_e){}
           }finally{
             yes.disabled=no.disabled=false;
+            yes.textContent='Duyệt & lưu';
           }
         };
 
