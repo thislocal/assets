@@ -1,3 +1,4 @@
+/* THIS LOCAL PUBLIC V17.90 - child category picker for parent category tabs */
 /* THIS LOCAL PUBLIC V17.72 - DMS proposal coordinates + mobile GPS placement */
 /* THIS LOCAL PUBLIC V17.66 - radius independent + diagnostic */
 /* THIS LOCAL public runtime extracted from V17.55. */
@@ -3483,6 +3484,9 @@
     suggest:{vi:'Gợi ý',en:'Suggested',zh:'推荐',th:'แนะนำ',ru:'Совет',ja:'おすすめ',ko:'추천'},
     more:{vi:'Thêm',en:'More',zh:'更多',th:'เพิ่มเติม',ru:'Ещё',ja:'その他',ko:'더보기'},
     less:{vi:'Thu gọn',en:'Less',zh:'收起',th:'ย่อ',ru:'Скрыть',ja:'閉じる',ko:'접기'},
+    allChildren:{vi:'Tất cả danh mục con',en:'All subcategories',zh:'全部子类别',th:'หมวดย่อยทั้งหมด',ru:'Все подкатегории',ja:'すべてのサブカテゴリー',ko:'모든 하위 카테고리'},
+    findChild:{vi:'Tìm danh mục con...',en:'Find a subcategory...',zh:'搜索子类别...',th:'ค้นหาหมวดย่อย...',ru:'Найти подкатегорию...',ja:'サブカテゴリーを検索...',ko:'하위 카테고리 검색...'},
+    closePicker:{vi:'Đóng',en:'Close',zh:'关闭',th:'ปิด',ru:'Закрыть',ja:'閉じる',ko:'닫기'},
     search:{vi:'Tìm danh mục, chủ đề, các dịch vụ, ...',en:'Enter a dish, type or place...',zh:'输入菜品、类型或地点...',th:'พิมพ์เมนู ประเภท หรือสถานที่...',ru:'Введите блюдо, тип или место...',ja:'料理・種類・場所を入力...',ko:'메뉴, 유형 또는 장소를 입력하세요...'},
     loading:{vi:'Đang kết nối Google Sheet; lần tải đầu có thể mất khoảng 30 giây...',en:'Connecting to Google Sheets; the first load may take about 30 seconds...',zh:'正在连接 Google 表格；首次加载可能需要约 30 秒...',th:'กำลังเชื่อมต่อ Google ชีต การโหลดครั้งแรกอาจใช้เวลาประมาณ 30 วินาที...',ru:'Подключение к Google Таблицам; первая загрузка может занять около 30 секунд...',ja:'Google スプレッドシートに接続中です。初回は約30秒かかることがあります...',ko:'Google 스프레드시트에 연결 중입니다. 첫 로드는 약 30초 걸릴 수 있습니다...'},
     noPlace:{vi:'Chưa có địa điểm phù hợp.',en:'No matching places yet.',zh:'暂无匹配地点。',th:'ยังไม่มีสถานที่ที่ตรงกัน',ru:'Подходящих мест пока нет.',ja:'該当する場所はまだありません。',ko:'일치하는 장소가 아직 없습니다.'},
@@ -3508,6 +3512,7 @@
     places:[],
     active:'',
     expanded:false,
+    pickerOpen:false,
     loading:false,
     visibleLimit:hubBatchSize(),
     serverOffset:0,
@@ -4043,40 +4048,107 @@
     if(e.locationBtn&&!e.locationBtn.disabled)e.locationBtn.textContent=tr('updateLocation');
     if(e.input){var modeSelect=e.hub.querySelector('.tl-search-mode-select');e.input.placeholder=(modeSelect&&modeSelect.value==='place')?'Tìm tên địa điểm bạn quan tâm':'Tìm danh mục, chủ đề, các dịch vụ, ...';}
   }
+  function ensureChildPicker(){
+    var e=els();if(!e.hub||!e.chips)return null;
+    var panel=e.hub.querySelector('.tl-hub-child-picker');
+    if(panel)return panel;
+
+    panel=document.createElement('div');panel.className='tl-hub-child-picker';panel.hidden=true;
+
+    var head=document.createElement('div');head.className='tl-hub-child-picker-head';
+    var title=document.createElement('strong');title.className='tl-hub-child-picker-title';title.textContent=tr('allChildren');
+    var close=document.createElement('button');close.type='button';close.className='tl-hub-child-picker-close';close.textContent=tr('closePicker');
+    head.appendChild(title);head.appendChild(close);
+
+    var searchWrap=document.createElement('div');searchWrap.className='tl-hub-child-picker-search-wrap';
+    var search=document.createElement('input');search.type='search';search.className='tl-hub-child-picker-search';search.autocomplete='off';search.placeholder=tr('findChild');
+    searchWrap.appendChild(search);
+
+    var grid=document.createElement('div');grid.className='tl-hub-child-picker-grid';
+    var empty=document.createElement('div');empty.className='tl-hub-child-picker-empty';empty.hidden=true;empty.textContent=tr('noPlace');
+
+    panel.appendChild(head);panel.appendChild(searchWrap);panel.appendChild(grid);panel.appendChild(empty);
+    e.chips.parentNode.insertBefore(panel,e.chips.nextSibling);
+
+    function filterPicker(){
+      var q=norm(search.value),visible=0;
+      Array.prototype.forEach.call(grid.querySelectorAll('.tl-hub-child-option'),function(btn){
+        var ok=!q||norm(btn.getAttribute('data-category-name')||btn.textContent).indexOf(q)>-1;
+        btn.hidden=!ok;if(ok)visible++;
+      });
+      empty.hidden=visible!==0;
+    }
+    search.addEventListener('input',filterPicker);
+    close.addEventListener('click',function(){state.pickerOpen=false;panel.hidden=true;});
+    panel.__tlSearch=search;panel.__tlGrid=grid;panel.__tlEmpty=empty;panel.__tlTitle=title;panel.__tlClose=close;
+    return panel;
+  }
+
+  function renderChildPicker(){
+    var panel=ensureChildPicker();if(!panel)return;
+    panel.hidden=!state.pickerOpen;
+    if(panel.__tlTitle)panel.__tlTitle.textContent=tr('allChildren')+' ('+state.subs.length+')';
+    if(panel.__tlClose)panel.__tlClose.textContent=tr('closePicker');
+    if(panel.__tlSearch)panel.__tlSearch.placeholder=tr('findChild');
+    var grid=panel.__tlGrid;if(!grid)return;grid.innerHTML='';
+
+    state.subs.slice().sort(function(a,b){return a.name.localeCompare(b.name,'vi');}).forEach(function(sub){
+      var b=document.createElement('button');b.type='button';
+      b.className='tl-hub-child-option'+(state.active===sub.name?' is-active':'');
+      b.setAttribute('data-category-name',sub.name);
+      var label=document.createElement('span');label.className='tl-hub-child-option-name';label.textContent=sub.name;b.appendChild(label);
+      var count=document.createElement('small');count.className='tl-hub-child-option-count';count.textContent=String(sub.placeCount||0)+' '+tr('places');b.appendChild(count);
+      b.addEventListener('click',function(){
+        addClick(sub.name);state.active=sub.name;state.visibleLimit=hubBatchSize();state.pickerOpen=false;
+        if(state.broad)syncHubCategoryUrl(sub.name);
+        renderChips();renderPlaces();
+        try{els().chips.scrollIntoView({block:'nearest',behavior:'smooth'});}catch(e){}
+      });
+      grid.appendChild(b);
+    });
+    if(panel.__tlSearch){panel.__tlSearch.value='';panel.__tlSearch.dispatchEvent(new Event('input'));}
+  }
+
   function renderChips(){
     var e=els();if(!e.chips)return;syncProposalContext();e.chips.innerHTML='';
     var all=document.createElement('button');all.type='button';
     all.className='tl-category-hub-chip'+(!state.active?' is-active':'');
     all.textContent=tr('all');
-    all.addEventListener('click',function(){state.active='';state.visibleLimit=hubBatchSize();syncHubCategoryUrl('');renderChips();renderPlaces();});
+    all.addEventListener('click',function(){state.active='';state.visibleLimit=hubBatchSize();state.pickerOpen=false;syncHubCategoryUrl('');renderChips();renderPlaces();});
     e.chips.appendChild(all);
 
     var ranked=rankedSubs(),top=ranked[0]||null;
-    ranked.forEach(function(sub,idx){
+    var visible=ranked.slice(0,MAX_SUGGEST);
+    if(state.active&&!visible.some(function(x){return x.name===state.active;})){
+      var activeSub=ranked.find(function(x){return x.name===state.active;});
+      if(activeSub)visible.push(activeSub);
+    }
+
+    visible.forEach(function(sub){
       var b=document.createElement('button');b.type='button';
       b.className='tl-category-hub-chip'+(state.active===sub.name?' is-active':'');
-      if(!state.expanded&&idx>=MAX_SUGGEST)b.hidden=true;
       var name=document.createElement('span');name.textContent=sub.name;b.appendChild(name);
       if(top&&sub.name===top.name&&((sub.placeCount||0)>0||clickCount(sub.name)>0)){
         var badge=document.createElement('span');badge.className='tl-hub-badge';badge.textContent=tr('suggest');b.appendChild(badge);
       }
       b.addEventListener('click',function(){
-        addClick(sub.name);
-        /* V17.32: trên trang nhóm chính, tab Category lọc ngay tại chỗ như trước.
-           URL ?category=... được cập nhật để có thể copy/share đúng trạng thái lọc. */
-        state.active=sub.name;state.visibleLimit=hubBatchSize();
+        addClick(sub.name);state.active=sub.name;state.visibleLimit=hubBatchSize();state.pickerOpen=false;
         if(state.broad)syncHubCategoryUrl(sub.name);
         renderChips();renderPlaces();
       });
       e.chips.appendChild(b);
     });
 
-    if(ranked.length>MAX_SUGGEST){
-      var more=document.createElement('button');more.type='button';more.className='tl-category-hub-chip tl-category-hub-more';
-      more.textContent=state.expanded?tr('less'):(tr('more')+' +'+(ranked.length-MAX_SUGGEST));
-      more.addEventListener('click',function(){state.expanded=!state.expanded;renderChips();});
+    if(state.broad&&ranked.length>MAX_SUGGEST){
+      var more=document.createElement('button');more.type='button';
+      more.className='tl-category-hub-chip tl-category-hub-more'+(state.pickerOpen?' is-open':'');
+      more.setAttribute('aria-expanded',state.pickerOpen?'true':'false');
+      more.textContent=tr('allChildren')+' ('+ranked.length+') '+(state.pickerOpen?'▴':'▾');
+      more.addEventListener('click',function(){state.pickerOpen=!state.pickerOpen;renderChips();if(state.pickerOpen){var p=ensureChildPicker();if(p&&p.__tlSearch)setTimeout(function(){try{p.__tlSearch.focus();}catch(e){}},0);}});
       e.chips.appendChild(more);
-    }
+    }else state.pickerOpen=false;
+
+    renderChildPicker();
   }
   function selectedPlaces(){
     var e=els(),q=e.input?norm(e.input.value):'',arr=state.places.slice();
