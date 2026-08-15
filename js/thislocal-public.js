@@ -1,4 +1,4 @@
-/* THIS LOCAL public runtime extracted from V17.55. */
+/* THIS LOCAL public runtime extracted from V17.63. */
 
 /* ---- original script block 6 ---- */
 (function(){
@@ -136,6 +136,8 @@
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   }
 
+  window.TL_HAVERSINE_KM=haversine;
+
   function distanceText(km){
     if(!isFinite(km))return '';
     if(km<1)return Math.max(10,Math.round(km*1000/10)*10)+' m';
@@ -148,41 +150,49 @@
     return isFinite(rank)&&rank>0?rank:Number.POSITIVE_INFINITY;
   }
 
-  function topInfo(place,userPos,localityLabel){
-    var rank=topRankNumber(place);
-    if(!isFinite(rank))return null;
-    var rawScope=safe(place&&place.top_scope);
-    var scope=normKey(rawScope).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-    var radius=Number(place&&place.top_radius_km);
+  function topScopeKinds(place){
+    var raw=safe(place&&place.top_scope),radius=Number(place&&place.top_radius_km);
     var area=safe(place&&place.top_locality||place&&place.locality||place&&place.province);
+    var out={global:false,local:false,radius:false,area:area,radiusKm:radius};
     var globals=['global','data','this_local','thislocal','top_this_local','toan_data','toan_this_local','top_toan_data','top_toan_data_this_local','toan_data_this_local'];
     var locals=['local','locality','dia_phuong','khu_vuc','area','province','tinh','tinh_thanh'];
     var radii=['radius','ban_kinh','khoang_cach','distance'];
-
-    /* V17.57: suy luận an toàn khi dữ liệu TOP cũ chưa chuẩn hóa hoàn toàn. */
-    var kind='global';
-    if(scope){
-      var looksRadius=scope.indexOf('radius')>-1||scope.indexOf('ban_kinh')>-1||scope.indexOf('khoang_cach')>-1||scope.indexOf('distance')>-1;
-      var looksLocal=scope.indexOf('local')>-1||scope.indexOf('dia_phuong')>-1||scope.indexOf('khu_vuc')>-1||scope.indexOf('province')>-1||scope.indexOf('tinh')>-1;
-      if(globals.indexOf(scope)>-1)kind='global';
-      else if(radii.indexOf(scope)>-1||looksRadius)kind='radius';
-      else if(locals.indexOf(scope)>-1||looksLocal)kind='local';
-      else if(isFinite(radius)&&radius>0)kind='radius';
-      else {kind='local';if(!safe(place&&place.top_locality))area=rawScope;}
-    }else if(isFinite(radius)&&radius>0)kind='radius';
-    else if(safe(place&&place.top_locality))kind='local';
-
-    if(kind==='global')return {rank:rank,label:'TOP của THIS LOCAL',scope:'global'};
-    if(kind==='local'){
-      var wanted=normKey(localityLabel),actual=normKey(area);
-      if(!wanted||!actual||(wanted.indexOf(actual)<0&&actual.indexOf(wanted)<0))return null;
-      return {rank:rank,label:'TOP của '+area,scope:'local'};
+    function accept(part){
+      var token=safe(part),n=normKey(token).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+      if(!n)return;
+      var looksGlobal=n.indexOf('this_local')>-1||n.indexOf('thislocal')>-1||n.indexOf('global')>-1||n.indexOf('toan_data')>-1;
+      var looksRadius=n.indexOf('radius')>-1||n.indexOf('ban_kinh')>-1||n.indexOf('khoang_cach')>-1||n.indexOf('distance')>-1;
+      var looksLocal=n.indexOf('locality')>-1||n==='local'||n.indexOf('dia_phuong')>-1||n.indexOf('khu_vuc')>-1||n.indexOf('province')>-1||n==='tinh'||n.indexOf('tinh_thanh')>-1;
+      if(globals.indexOf(n)>-1||looksGlobal){out.global=true;return;}
+      if(radii.indexOf(n)>-1||looksRadius){out.radius=true;return;}
+      if(locals.indexOf(n)>-1||looksLocal){out.local=true;return;}
+      /* Dữ liệu cũ có thể lưu thẳng tên địa phương trong top_scope. */
+      out.local=true;if(!safe(place&&place.top_locality))out.area=token;
     }
-    if(kind==='radius'){
+    if(raw){raw.split(/[,;|+]+/).forEach(accept);}
+    if(!out.global&&!out.local&&!out.radius){
+      if(isFinite(radius)&&radius>0)out.radius=true;
+      else if(safe(place&&place.top_locality))out.local=true;
+      else out.global=true;
+    }
+    return out;
+  }
+  /* V17.63: expose shared TOP scope parser for later script blocks. */
+  window.TL_TOP_SCOPE_KINDS=topScopeKinds;
+
+  function topInfo(place,userPos,localityLabel){
+    var rank=topRankNumber(place);
+    if(!isFinite(rank))return null;
+    var scopes=topScopeKinds(place),radius=Number(place&&place.top_radius_km),area=scopes.area;
+    if(scopes.global)return {rank:rank,label:'TOP của THIS LOCAL',scope:'global'};
+    if(scopes.local){
+      var wanted=normKey(localityLabel),actual=normKey(area);
+      if(wanted&&actual&&(wanted.indexOf(actual)>-1||actual.indexOf(wanted)>-1))return {rank:rank,label:'TOP của '+area,scope:'local'};
+    }
+    if(scopes.radius){
       if(!userPos||!isFinite(radius)||radius<=0||!isFinite(Number(place.lat))||!isFinite(Number(place.lng)))return null;
       var km=isFinite(place._distance)?place._distance:haversine(userPos.lat,userPos.lng,Number(place.lat),Number(place.lng));
-      if(!isFinite(km)||km>radius)return null;
-      return {rank:rank,label:'TOP trong bán kính '+(Math.round(radius*10)/10)+' km',scope:'radius',distance:km};
+      if(isFinite(km)&&km<=radius)return {rank:rank,label:'TOP trong bán kính '+(Math.round(radius*10)/10)+' km',scope:'radius',distance:km};
     }
     return null;
   }
@@ -2135,23 +2145,9 @@
           return norm([loc.locality,loc.region,loc.province,loc.countryName].map(cleanText).filter(Boolean).join(' '));
         }
         function scopeOf(place){
-          var raw=cleanText(place&&place.top_scope),scope=norm(raw).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-          var radius=Number(place&&place.top_radius_km),area=cleanText(place&&place.top_locality||place&&place.locality||place&&place.province);
-          var globals=['global','data','this_local','thislocal','top_this_local','toan_data','toan_this_local','top_toan_data','top_toan_data_this_local','toan_data_this_local'];
-          var locals=['local','locality','dia_phuong','khu_vuc','area','province','tinh','tinh_thanh'];
-          var radii=['radius','ban_kinh','khoang_cach','distance'];
-          var kind='global';
-          if(scope){
-            var looksRadius=scope.indexOf('radius')>-1||scope.indexOf('ban_kinh')>-1||scope.indexOf('khoang_cach')>-1||scope.indexOf('distance')>-1;
-            var looksLocal=scope.indexOf('local')>-1||scope.indexOf('dia_phuong')>-1||scope.indexOf('khu_vuc')>-1||scope.indexOf('province')>-1||scope.indexOf('tinh')>-1;
-            if(globals.indexOf(scope)>-1)kind='global';
-            else if(radii.indexOf(scope)>-1||looksRadius)kind='radius';
-            else if(locals.indexOf(scope)>-1||looksLocal)kind='local';
-            else if(isFinite(radius)&&radius>0)kind='radius';
-            else {kind='local';if(!cleanText(place&&place.top_locality))area=raw;}
-          }else if(isFinite(radius)&&radius>0)kind='radius';
-          else if(cleanText(place&&place.top_locality))kind='local';
-          return{kind:kind,area:area,radius:radius};
+          var parser=window.TL_TOP_SCOPE_KINDS;
+          var s=typeof parser==='function'?parser(place):{global:true,local:false,radius:false,area:cleanText(place&&place.top_locality||place&&place.locality||place&&place.province),radiusKm:Number(place&&place.top_radius_km)};
+          return{kinds:{global:!!s.global,local:!!s.local,radius:!!s.radius},area:s.area,radius:s.radiusKm};
         }
         function areaMatches(place,scope,loc){
           var wanted=locationKey(loc);if(!wanted)return false;
@@ -2173,27 +2169,28 @@
         function memberships(place,loc){
           var rank=rankNumber(place);if(!isFinite(rank))return[];
           var scope=scopeOf(place),out=[];
+          function hasGroup(group){return out.some(function(x){return x.group===group;});}
 
-          /* Phạm vi gốc. */
-          if(scope.kind==='global')out.push({rank:rank,group:'global',original:'global',label:'TOP THIS LOCAL',distance:NaN});
+          if(scope.kinds.global)out.push({rank:rank,group:'global',original:'global',label:'TOP THIS LOCAL',distance:NaN});
 
-          var localMatch=scope.kind==='local'&&areaMatches(place,scope,loc);
+          var localMatch=scope.kinds.local&&areaMatches(place,scope,loc);
           if(localMatch)out.push({rank:rank,group:'local',original:'local',label:'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'),distance:NaN});
 
-          if(scope.kind==='radius'){
+          if(scope.kinds.radius){
             var ownRadius=radiusMembership(place,scope,loc);
             if(ownRadius)out.push({rank:rank,group:'radius',original:'radius',label:'TOP '+(Math.round(ownRadius.radius*10)/10)+' km',distance:ownRadius.distance,radius:ownRadius.radius});
           }
 
-          /* V17.60: TOP cấp trên được kế thừa xuống "quanh bạn" theo bán kính mặc định 25 km.
-             TOP RADIUS vẫn dùng bán kính riêng do quản trị viên cấu hình. */
-          if(scope.kind==='global'){
-            if(areaMatches(place,scope,loc))out.push({rank:rank,group:'local',original:'global',label:'TOP THIS LOCAL',distance:NaN,inherited:true});
-            var inheritedGlobalRadius=radiusMembership(place,scope,loc,GUIDE_RADIUS_KM);
-            if(inheritedGlobalRadius)out.push({rank:rank,group:'radius',original:'global',label:'TOP THIS LOCAL',distance:inheritedGlobalRadius.distance,radius:GUIDE_RADIUS_KM,inherited:true});
+          /* TOP cấp trên vẫn kế thừa xuống phạm vi nhỏ hơn nếu chưa chọn trực tiếp phạm vi đó. */
+          if(scope.kinds.global){
+            if(!hasGroup('local')&&areaMatches(place,scope,loc))out.push({rank:rank,group:'local',original:'global',label:'TOP THIS LOCAL',distance:NaN,inherited:true});
+            if(!hasGroup('radius')){
+              var inheritedGlobalRadius=radiusMembership(place,scope,loc,GUIDE_RADIUS_KM);
+              if(inheritedGlobalRadius)out.push({rank:rank,group:'radius',original:'global',label:'TOP THIS LOCAL',distance:inheritedGlobalRadius.distance,radius:GUIDE_RADIUS_KM,inherited:true});
+            }
           }
 
-          if(localMatch){
+          if(localMatch&&!hasGroup('radius')){
             var inheritedLocalRadius=radiusMembership(place,scope,loc,GUIDE_RADIUS_KM);
             if(inheritedLocalRadius)out.push({rank:rank,group:'radius',original:'local',label:'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'),distance:inheritedLocalRadius.distance,radius:GUIDE_RADIUS_KM,inherited:true});
           }
@@ -2292,7 +2289,7 @@
           function finish(data){if(done)return;done=true;clearTimeout(timer);try{delete window[callback];}catch(e){}if(script.parentNode)script.parentNode.removeChild(script);candidates=data&&data.ok&&Array.isArray(data.places)?data.places:[];render(getSavedLocation());}
           window[callback]=function(data){finish(data);};
           script.onerror=function(){finish(null);};
-          script.src=api+'?action=homepageTop&callback='+encodeURIComponent(callback)+'&_v=17.59';document.head.appendChild(script);
+          script.src=api+'?action=homepageTop&callback='+encodeURIComponent(callback)+'&_v=17.63';document.head.appendChild(script);
           timer=setTimeout(function(){finish(null);},15000);
         }
         document.addEventListener('tl:locationchange',function(ev){render(ev&&ev.detail?ev.detail:getSavedLocation());});
@@ -3503,37 +3500,20 @@
   }
   function hubTopInfo(p,pos,locationLabel){
     var rank=hubTopRank(p);if(!isFinite(rank))return null;
-    var rawScope=clean(p&&p.top_scope),scope=norm(rawScope).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
-    var radius=Number(p&&p.top_radius_km),area=clean(p&&p.top_locality||p&&p.locality||p&&p.province);
-    var globals=['global','data','this_local','thislocal','top_this_local','toan_data','toan_this_local','top_toan_data','top_toan_data_this_local','toan_data_this_local'];
-    var locals=['local','locality','dia_phuong','khu_vuc','area','province','tinh','tinh_thanh'];
-    var radii=['radius','ban_kinh','khoang_cach','distance'];
-    var kind='global';
-    if(scope){
-      var looksRadius=scope.indexOf('radius')>-1||scope.indexOf('ban_kinh')>-1||scope.indexOf('khoang_cach')>-1||scope.indexOf('distance')>-1;
-      var looksLocal=scope.indexOf('local')>-1||scope.indexOf('dia_phuong')>-1||scope.indexOf('khu_vuc')>-1||scope.indexOf('province')>-1||scope.indexOf('tinh')>-1;
-      if(globals.indexOf(scope)>-1)kind='global';
-      else if(radii.indexOf(scope)>-1||looksRadius)kind='radius';
-      else if(locals.indexOf(scope)>-1||looksLocal)kind='local';
-      else if(isFinite(radius)&&radius>0)kind='radius';
-      else {kind='local';if(!clean(p&&p.top_locality))area=rawScope;}
-    }else if(isFinite(radius)&&radius>0)kind='radius';
-    else if(clean(p&&p.top_locality))kind='local';
-    if(kind==='global')return{rank:rank,label:'TOP của THIS LOCAL',scope:'global'};
-    if(kind==='local'){
+    var parser=window.TL_TOP_SCOPE_KINDS;
+    var scopes=typeof parser==='function'?parser(p):{global:true,local:false,radius:false,area:clean(p&&p.top_locality||p&&p.locality||p&&p.province),radiusKm:Number(p&&p.top_radius_km)},area=scopes.area,radius=Number(p&&p.top_radius_km);
+    if(scopes.global)return{rank:rank,label:'TOP của THIS LOCAL',scope:'global'};
+    if(scopes.local){
       var wanted=norm(locationLabel),actual=norm(area);
-      if(!wanted||!actual||(wanted.indexOf(actual)<0&&actual.indexOf(wanted)<0))return null;
-      return{rank:rank,label:'TOP của '+area,scope:'local'};
+      if(wanted&&actual&&(wanted.indexOf(actual)>-1||actual.indexOf(wanted)>-1))return{rank:rank,label:'TOP của '+area,scope:'local'};
     }
-    if(kind==='radius'){
+    if(scopes.radius){
       var km=isFinite(Number(p&&p._distance))?Number(p._distance):NaN;
       if(!isFinite(km)&&pos&&isFinite(Number(pos.lat))&&isFinite(Number(pos.lng))&&isFinite(Number(p.lat))&&isFinite(Number(p.lng))){
-        var R=6371,toRad=Math.PI/180,dLat=(Number(p.lat)-Number(pos.lat))*toRad,dLng=(Number(p.lng)-Number(pos.lng))*toRad;
-        var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(Number(pos.lat)*toRad)*Math.cos(Number(p.lat)*toRad)*Math.sin(dLng/2)*Math.sin(dLng/2);
-        km=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+        var hv=window.TL_HAVERSINE_KM;
+        if(typeof hv==='function')km=hv(Number(pos.lat),Number(pos.lng),Number(p.lat),Number(p.lng));
       }
-      if(!pos||!isFinite(radius)||radius<=0||!isFinite(km)||km>radius)return null;
-      return{rank:rank,label:'TOP trong bán kính '+(Math.round(radius*10)/10)+' km',scope:'radius',distance:km};
+      if(isFinite(radius)&&radius>0&&isFinite(km)&&km<=radius)return{rank:rank,label:'TOP trong bán kính '+(Math.round(radius*10)/10)+' km',scope:'radius',distance:km};
     }
     return null;
   }
