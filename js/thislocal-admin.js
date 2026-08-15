@@ -1,4 +1,5 @@
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
+/* THIS LOCAL ADMIN V17.67: strict TOP radius coordinate validation. */
 (function(){
   var pth=(location.pathname||'').toLowerCase();
   if(!/^\/p\/(?:quan-tri|quan-tri-this-local|this-local-admin|admin)\.html\/?$/.test(pth))return;
@@ -89,8 +90,10 @@
     if(!clean(data.top_rank))throw new Error('Đã chọn phạm vi TOP nhưng chưa nhập TOP rank, ví dụ TOP1.');
     if(scopes.indexOf('LOCALITY')>-1&&!clean(data.top_locality||data.locality||data.province))throw new Error('TOP khu vực cần có Khu vực TOP, Khu vực hoặc Tỉnh/thành.');
     if(scopes.indexOf('RADIUS')>-1){
-      var r=Number(data.top_radius_km),lat=Number(data.lat),lng=Number(data.lng);
+      var r=Number(data.top_radius_km),rawLat=clean(data.lat),rawLng=clean(data.lng);
       if(!isFinite(r)||r<=0)throw new Error('TOP bán kính cần nhập Bán kính TOP (km) lớn hơn 0.');
+      if(!rawLat||!rawLng)throw new Error('TOP bán kính cần nhập cả Vĩ độ và Kinh độ của địa điểm. Không thể chỉ dùng địa chỉ.');
+      var lat=Number(rawLat),lng=Number(rawLng);
       if(!isFinite(lat)||!isFinite(lng)||lat<-90||lat>90||lng<-180||lng>180)throw new Error('TOP bán kính cần tọa độ Vĩ độ/Kinh độ hợp lệ của địa điểm.');
     }
     /* Không lưu THIS_LOCAL,LOCALITY,RADIUS chung một chuỗi nữa.
