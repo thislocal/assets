@@ -1,4 +1,4 @@
-/* THIS LOCAL external CSS extracted from V17.55. Keep file order unchanged. */
+/* THIS LOCAL external CSS extracted from V17.58 by VInh Béo. Keep file order unchanged. */
 
 :root{
   --tl-bg:#f5f7f3;--tl-card:#fff;--tl-soft:#eef4ef;--tl-text:#17221c;--tl-muted:#66736b;
@@ -1711,3 +1711,20 @@ body.tl-allcats-page .post-body>.tl-allcats-v24{margin-top:0}
 .tl-home-top-meta .is-verified{background:#137333;color:#fff}.tl-home-top-meta .is-trusted{background:#087a50;color:#fff}.tl-home-top-meta .is-hot{background:#f06a27;color:#fff}
 @media(max-width:1000px){.tl-home-top-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.tl-home-top-places{padding:18px 8px 6px}.tl-home-top-heading h3{font-size:25px}.tl-home-top-grid{display:flex;gap:9px;overflow-x:auto;padding:1px 1px 9px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tl-home-top-grid::-webkit-scrollbar{display:none}.tl-home-top-card{flex:0 0 min(82vw,320px);scroll-snap-align:start}.tl-home-top-status{flex:1 0 100%}}
+
+/* THIS LOCAL V17.58 - TOP THIS LOCAL ke thua xuong TOP khu vuc / ban kinh */
+.tl-home-top-groups{display:grid;gap:18px}
+.tl-home-top-group{display:grid;gap:10px}
+.tl-home-top-group-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:0 2px}
+.tl-home-top-group-head h4{margin:0;color:var(--tl-text)!important;font-size:19px;line-height:1.15;font-weight:950;letter-spacing:-.025em}
+.tl-home-top-group-head p{margin:4px 0 0;color:var(--tl-muted)!important;font-size:11px;line-height:1.45}
+.tl-home-top-group-count{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#edf4ef;color:#3d5e4d;font-size:9.5px;font-weight:900;white-space:nowrap}
+.tl-home-top-group.is-local .tl-home-top-group-count{background:#e8f3ed;color:#176b4b}
+.tl-home-top-group.is-radius .tl-home-top-group-count{background:#fff0e8;color:#b84d1f}
+.tl-home-top-meta .is-inherited{background:#e8eef9;color:#294f82}
+@media(max-width:760px){
+  .tl-home-top-groups{gap:15px}
+  .tl-home-top-group-head{align-items:flex-start}
+  .tl-home-top-group-head h4{font-size:17px}
+  .tl-home-top-group-head p{font-size:10px}
+}
