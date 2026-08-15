@@ -1,4 +1,4 @@
-/* THIS LOCAL PUBLIC V17.91 - fixed all-child button beside scrollable category tabs */
+/* THIS LOCAL PUBLIC V17.92 - static desktop/mobile view-all slot + child picker */
 /* THIS LOCAL PUBLIC V17.72 - DMS proposal coordinates + mobile GPS placement */
 /* THIS LOCAL PUBLIC V17.66 - radius independent + diagnostic */
 /* THIS LOCAL public runtime extracted from V17.55. */
@@ -3485,6 +3485,7 @@
     more:{vi:'Thêm',en:'More',zh:'更多',th:'เพิ่มเติม',ru:'Ещё',ja:'その他',ko:'더보기'},
     less:{vi:'Thu gọn',en:'Less',zh:'收起',th:'ย่อ',ru:'Скрыть',ja:'閉じる',ko:'접기'},
     allChildren:{vi:'Tất cả danh mục con',en:'All subcategories',zh:'全部子类别',th:'หมวดย่อยทั้งหมด',ru:'Все подкатегории',ja:'すべてのサブカテゴリー',ko:'모든 하위 카테고리'},
+    viewAll:{vi:'Xem tất cả',en:'View all',zh:'查看全部',th:'ดูทั้งหมด',ru:'Показать все',ja:'すべて見る',ko:'모두 보기'},
     findChild:{vi:'Tìm danh mục con...',en:'Find a subcategory...',zh:'搜索子类别...',th:'ค้นหาหมวดย่อย...',ru:'Найти подкатегорию...',ja:'サブカテゴリーを検索...',ko:'하위 카테고리 검색...'},
     closePicker:{vi:'Đóng',en:'Close',zh:'关闭',th:'ปิด',ru:'Закрыть',ja:'閉じる',ko:'닫기'},
     search:{vi:'Tìm danh mục, chủ đề, các dịch vụ, ...',en:'Enter a dish, type or place...',zh:'输入菜品、类型或地点...',th:'พิมพ์เมนู ประเภท หรือสถานที่...',ru:'Введите блюдо, тип или место...',ja:'料理・種類・場所を入力...',ko:'메뉴, 유형 또는 장소를 입력하세요...'},
@@ -4161,8 +4162,8 @@
       var more=document.createElement('button');more.type='button';
       more.className='tl-category-hub-chip tl-category-hub-more'+(state.pickerOpen?' is-open':'');
       more.setAttribute('aria-expanded',state.pickerOpen?'true':'false');
-      more.setAttribute('aria-label',tr('allChildren')+' ('+ranked.length+')');
-      more.textContent=tr('allChildren')+' ('+ranked.length+') '+(state.pickerOpen?'▴':'▾');
+      more.setAttribute('aria-label',tr('viewAll'));
+      more.textContent=tr('viewAll')+' '+(state.pickerOpen?'▴':'▾');
       more.addEventListener('click',function(){state.pickerOpen=!state.pickerOpen;renderChips();if(state.pickerOpen){var p=ensureChildPicker();if(p&&p.__tlSearch)setTimeout(function(){try{p.__tlSearch.focus();}catch(e){}},0);}});
       (moreSlot||e.chips).appendChild(more);
     }else state.pickerOpen=false;
