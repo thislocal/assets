@@ -1,4 +1,5 @@
-/* THIS LOCAL ADMIN V17.78 - Supabase-only suggestion review; legacy sheet status normalized to PENDING */
+/* THIS LOCAL ADMIN V17.80 - canonical category selector + suggestion ID + verified approval view */
+/* V17.80: after approval switch to APPROVED and reopen exact suggestion ID, avoiding confusion with duplicate pending submissions. */
 /* THIS LOCAL ADMIN V17.72 - DMS/decimal coordinate normalization */
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
 /* THIS LOCAL ADMIN V17.71: accept decimal and DMS coordinates; normalize to decimal before saving. */
@@ -9,9 +10,12 @@
 
   var PROJECT='https://dhxawrbtzloypojwmksn.supabase.co';
   var API=PROJECT+'/functions/v1/this-local-admin-api';
+  var ADMIN_BUILD='17.80',lastApiVersion='';
   var KKEY='tl_admin_publishable_key_v2',KEMAIL='tl_admin_email_v2',KACCESS='tl_admin_access_v2',KREFRESH='tl_admin_refresh_v2';
 
   function clean(v){return String(v==null?'':v).replace(/\s+/g,' ').trim();}
+  function fold(v){var x=clean(v).toLowerCase().replace(/đ/g,'d');try{x=x.normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(e){}return x;}
+  function shortSuggestionId(id){var x=clean(id);return x.length>18?x.slice(0,8)+'…'+x.slice(-6):x;}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function node(tag,cls,text){var x=document.createElement(tag);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x;}
   function fmt(v){try{return new Date(v).toLocaleString('vi-VN');}catch(e){return clean(v);}}
@@ -47,6 +51,7 @@
     var r=await fetch(API+path,Object.assign({},opt,{headers:h,cache:'no-store'}));
     if(r.status===401&&retry&&refresh()){await renew();return api(path,opt,false)}
     var raw=await r.text(),d={};try{d=raw?JSON.parse(raw):{}}catch(e){d={raw:raw}}
+    if(d&&d.api_version){lastApiVersion=clean(d.api_version);var vb=document.getElementById('tlaBuildInfo');if(vb)vb.textContent='Admin JS '+ADMIN_BUILD+' · API '+lastApiVersion;}
     if(!r.ok||!d.ok){
       var msg='';
       if(typeof d.error==='string')msg=d.error;
@@ -193,10 +198,29 @@
   function byId(){var m={};state.cats.forEach(function(c){m[c.id]=c});return m}
   function catName(id){var c=byId()[id];return c?c.name_vi:''}
   function parentName(id){var c=byId()[id];return c&&c.parent_id?catName(c.parent_id):''}
+  function resolveCategoryIdClient(payload){
+    payload=payload||{};var m=byId(),requested=clean(payload.category_id);
+    if(requested&&m[requested]&&m[requested].parent_id)return requested;
+    var wanted=fold(payload.category),wantedParent=fold(payload.parent_category),hits=state.cats.filter(function(c){return c.parent_id&&c.active!==false&&fold(c.name_vi)===wanted});
+    if(hits.length===1)return hits[0].id;
+    if(wantedParent){for(var i=0;i<hits.length;i++){if(fold(parentName(hits[i].id))===wantedParent)return hits[i].id;}}
+    return '';
+  }
+  function addCanonicalCategoryFields(form,grid,payload,label){
+    payload=payload||{};var resolved=resolveCategoryIdClient(payload),f=field(label||'Danh mục / Category','category_id','','select');
+    categoryOptions(f.input,resolved);grid.appendChild(f.wrap);
+    var hiddenCategory=node('input',''),hiddenParent=node('input',''),info=node('div','tla-note','');
+    hiddenCategory.type='hidden';hiddenCategory.setAttribute('data-field','category');hiddenCategory.value=clean(payload.category);
+    hiddenParent.type='hidden';hiddenParent.setAttribute('data-field','parent_category');hiddenParent.value=clean(payload.parent_category);
+    form.appendChild(hiddenCategory);form.appendChild(hiddenParent);
+    function sync(){var c=byId()[f.input.value];if(c){hiddenCategory.value=clean(c.name_vi);hiddenParent.value=parentName(c.id);info.textContent='Danh mục cha: '+(hiddenParent.value||'—')+' · Category: '+hiddenCategory.value;}else{info.textContent='Chưa khớp danh mục chuẩn. Hãy chọn đúng mục trong danh sách.';}}
+    f.input.onchange=sync;sync();grid.appendChild(info);
+    return {input:f.input,category:hiddenCategory,parent:hiddenParent,info:info};
+  }
 
   function shell(){
     host.innerHTML='';var s=node('div','tla-shell');
-    var h=node('div','tla-head'),brand=node('div','tla-brand');brand.appendChild(node('h1','','THIS LOCAL Admin'));brand.appendChild(node('p','','Supabase là nguồn dữ liệu chính · mọi thay đổi làm tại đây'));
+    var h=node('div','tla-head'),brand=node('div','tla-brand');brand.appendChild(node('h1','','THIS LOCAL Admin'));brand.appendChild(node('p','','Supabase là nguồn dữ liệu chính · mọi thay đổi làm tại đây'));var bi=node('small','tla-muted','Admin JS '+ADMIN_BUILD+(lastApiVersion?' · API '+lastApiVersion:''));bi.id='tlaBuildInfo';brand.appendChild(bi);
     var usr=node('div','tla-user');usr.appendChild(node('span','',localStorage.getItem(KEMAIL)||'Admin'));var lo=node('button','tla-btn','Đăng xuất');lo.onclick=function(){clearSession();login()};usr.appendChild(lo);h.appendChild(brand);h.appendChild(usr);s.appendChild(h);
     var nav=node('div','tla-nav');[['dashboard','Tổng quan'],['places','Địa điểm'],['suggestions','Đề xuất'],['categories','Danh mục'],['ratings','Đánh giá']].forEach(function(x){var b=node('button',state.tab===x[0]?'is-active':'',x[1]);b.onclick=function(){state.tab=x[0];render()};nav.appendChild(b)});s.appendChild(nav);
     var c=node('div','tla-content');c.id='tlaContent';s.appendChild(c);host.appendChild(s);return c
@@ -246,8 +270,8 @@
     var head=node('div','tla-form-head'),left=node('div','');left.appendChild(node('h2','',p.id?(p.name||'Sửa địa điểm'):'Thêm địa điểm mới'));left.appendChild(node('div','tla-muted',p.id||'ID sẽ tự tạo khi lưu'));head.appendChild(left);detail.appendChild(head);
     var form=node('div',''),grid=node('div','tla-grid');
     function add(label,name,type,wide){var f=field(label,name,p[name],type,wide);grid.appendChild(f.wrap);return f.input}
-    var category=field('Category','category_id','', 'select');categoryOptions(category.input,p.category_id||'');category.input.onchange=function(){var c=byId()[category.input.value];if(c){form.querySelector('[data-field="category"]').value=c.name_vi;form.querySelector('[data-field="parent_category"]').value=parentName(c.id)}};grid.appendChild(category.wrap);
-    add('Tên Category','category','text');add('Danh mục cha','parent_category','text');add('Tên địa điểm','name','text',true);add('Địa chỉ','address','text',true);add('Điện thoại','phone');add('Website','business_url');add('Google Maps URL','map_url');add('Giờ mở cửa','hours');add('Giờ mở','open_time');add('Giờ đóng','close_time');add('Giá','price');add('Giá từ','price_min');add('Giá đến','price_max');var latAdmin=add('Vĩ độ','lat'),lngAdmin=add('Kinh độ','lng');latAdmin.placeholder='22.483833 hoặc 22°29\'01.8"N';lngAdmin.placeholder='103.972194 hoặc 103°58\'19.9"E';bindCoordinateInput(latAdmin,'lat');bindCoordinateInput(lngAdmin,'lng');add('Tỉnh/thành','province');add('Mã tỉnh','province_code');add('Khu vực','locality');add('Mã quốc gia','country_code');add('Ghi chú','note','textarea',true);form.appendChild(grid);form.appendChild(node('div','tla-note','Tọa độ nhận cả 2 dạng: thập phân (22.483833 / 103.972194) hoặc DMS (22°29\'01.8"N / 103°58\'19.9"E). Có thể dán nguyên tọa độ từ Google Maps. Khi rời ô hoặc bấm Lưu, hệ thống tự đổi về số thập phân 6 chữ số.'));
+    var categoryCtl=addCanonicalCategoryFields(form,grid,p,'Danh mục / Category');
+    add('Tên địa điểm','name','text',true);add('Địa chỉ','address','text',true);add('Điện thoại','phone');add('Website','business_url');add('Google Maps URL','map_url');add('Giờ mở cửa','hours');add('Giờ mở','open_time');add('Giờ đóng','close_time');add('Giá','price');add('Giá từ','price_min');add('Giá đến','price_max');var latAdmin=add('Vĩ độ','lat'),lngAdmin=add('Kinh độ','lng');latAdmin.placeholder='22.483833 hoặc 22°29\'01.8"N';lngAdmin.placeholder='103.972194 hoặc 103°58\'19.9"E';bindCoordinateInput(latAdmin,'lat');bindCoordinateInput(lngAdmin,'lng');add('Tỉnh/thành','province');add('Mã tỉnh','province_code');add('Khu vực','locality');add('Mã quốc gia','country_code');add('Ghi chú','note','textarea',true);form.appendChild(grid);form.appendChild(node('div','tla-note','Tọa độ nhận cả 2 dạng: thập phân (22.483833 / 103.972194) hoặc DMS (22°29\'01.8"N / 103°58\'19.9"E). Có thể dán nguyên tọa độ từ Google Maps. Khi rời ô hoặc bấm Lưu, hệ thống tự đổi về số thập phân 6 chữ số.'));
     detail.appendChild(form);
     detail.appendChild(node('div','tla-section-title','Quản trị hiển thị'));
     var flags=node('div','tla-flags');
@@ -260,7 +284,7 @@
     var actions=node('div','tla-actions'),save=node('button','tla-btn primary','Lưu thay đổi');save.type='button';actions.appendChild(save);
     if(p.id){var del=node('button','tla-btn danger','Xóa địa điểm');del.type='button';del.onclick=async function(){if(!confirm('Xóa vĩnh viễn địa điểm này? Ratings liên quan cũng có thể bị xóa theo khóa ngoại.'))return;try{await api('',{method:'POST',body:JSON.stringify({action:'deletePlace',id:p.id})});state.places.active='';render()}catch(e){errBox(detail,e.message)}};actions.appendChild(del)}
     form.appendChild(actions);
-    save.onclick=async function(){try{save.disabled=true;var data=collect(form,p);applyTopScopes(data,form);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
+    save.onclick=async function(){try{save.disabled=true;if(!categoryCtl.input.value)throw new Error('Hãy chọn Danh mục / Category chuẩn trước khi lưu.');var data=collect(form,p);applyTopScopes(data,form);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
   }
 
 
@@ -276,7 +300,9 @@
     var sp=node('div','tla-split'),list=node('div','tla-list'),detail=node('div','tla-detail');sp.appendChild(list);sp.appendChild(detail);c.appendChild(sp);st.onchange=function(){state.suggestions.status=st.value;state.suggestions.active='';suggestions(c)};ref.onclick=function(){suggestions(c)};
     list.innerHTML='<div class="tla-status">Đang tải...</div>';var d=await api('?action=suggestions&status='+encodeURIComponent(state.suggestions.status)+'&limit=100');state.suggestions.items=d.suggestions||[];list.innerHTML='';
     if(!state.suggestions.items.length)list.appendChild(node('div','tla-status','Không có đề xuất.'));
-    state.suggestions.items.forEach(function(s){var p=s.payload||{},uiStatus=suggestionUiStatus(s),b=node('button','tla-item');var badges=node('div','tla-badges');badges.appendChild(node('span','tla-badge '+(uiStatus==='PENDING'?'pending':uiStatus==='APPROVED'?'ok':'danger'),uiStatus));badges.appendChild(node('span','tla-badge',clean(s.submit_type).toLowerCase()==='update'?'Cập nhật':'Thêm mới'));b.appendChild(badges);b.appendChild(node('strong','',p.name||'(Chưa có tên)'));b.appendChild(node('small','',(p.category||'')+(p.address?' · '+p.address:'')+' · '+fmt(s.created_at)));b.onclick=function(){suggestionEditor(detail,s.id)};list.appendChild(b)});detail.innerHTML='<div class="tla-empty">Chọn một đề xuất để kiểm tra.</div>'
+    state.suggestions.items.forEach(function(s){var p=s.payload||{},uiStatus=suggestionUiStatus(s),b=node('button','tla-item');var badges=node('div','tla-badges');badges.appendChild(node('span','tla-badge '+(uiStatus==='PENDING'?'pending':uiStatus==='APPROVED'?'ok':'danger'),uiStatus));badges.appendChild(node('span','tla-badge',clean(s.submit_type).toLowerCase()==='update'?'Cập nhật':'Thêm mới'));badges.appendChild(node('span','tla-badge','ID '+shortSuggestionId(s.id)));b.appendChild(badges);b.appendChild(node('strong','',p.name||'(Chưa có tên)'));b.appendChild(node('small','',(p.category||'')+(p.address?' · '+p.address:'')+' · '+fmt(s.created_at)+' · '+clean(s.id)));b.onclick=function(){state.suggestions.active=s.id;suggestionEditor(detail,s.id)};list.appendChild(b)});
+    detail.innerHTML='<div class="tla-empty">Chọn một đề xuất để kiểm tra. Mỗi đề xuất có ID riêng; nhiều dòng cùng tên có thể là nhiều lần gửi khác nhau.</div>';
+    if(state.suggestions.active){var hit=state.suggestions.items.some(function(x){return clean(x.id)===clean(state.suggestions.active)});if(hit)await suggestionEditor(detail,state.suggestions.active);else state.suggestions.active='';}
   }
 
   async function suggestionEditor(detail,id){
@@ -288,7 +314,7 @@
       var originalUpdate=clean(s.submit_type).toLowerCase()==='update';
       var h=node('div','tla-form-head'),l=node('div','');
       l.appendChild(node('h2','',p.name||'Đề xuất'));
-      l.appendChild(node('div','tla-muted',(originalUpdate?'Cập nhật địa điểm':'Thêm mới')+' · '+fmt(s.created_at)+' · '+clean(s.submitter_name||s.submitter_contact)));
+      l.appendChild(node('div','tla-muted',(originalUpdate?'Cập nhật địa điểm':'Thêm mới')+' · '+fmt(s.created_at)+' · '+clean(s.submitter_name||s.submitter_contact)));l.appendChild(node('div','tla-muted','Suggestion ID: '+clean(s.id)));
       h.appendChild(l);detail.appendChild(h);
 
       if(d.target){
@@ -298,19 +324,7 @@
       var form=node('div',''),grid=node('div','tla-grid');
       function sf(label,name,type,wide){var f=field(label,name,p[name],type,wide);grid.appendChild(f.wrap);return f.input}
 
-      var cat=field('Category','category_id','','select');
-      categoryOptions(cat.input,p.category_id||'');
-      cat.input.onchange=function(){
-        var c=byId()[cat.input.value];
-        if(c){
-          form.querySelector('[data-field="category"]').value=c.name_vi;
-          form.querySelector('[data-field="parent_category"]').value=parentName(c.id);
-        }
-      };
-      grid.appendChild(cat.wrap);
-
-      sf('Tên Category','category');
-      sf('Danh mục cha','parent_category');
+      var catCtl=addCanonicalCategoryFields(form,grid,p,'Danh mục / Category');
       sf('Tên địa điểm','name','text',true);
       sf('Địa chỉ','address','text',true);
       sf('Điện thoại','phone');
@@ -330,6 +344,8 @@
       sf('Ghi chú','note','textarea',true);
       form.appendChild(grid);
       form.appendChild(node('div','tla-note','Có thể nhập tọa độ thập phân hoặc DMS. Khi rời ô hoặc duyệt, hệ thống tự chuyển về số thập phân 6 chữ số.'));
+      var samePending=state.suggestions.items.filter(function(x){if(clean(x.id)===clean(s.id)||suggestionUiStatus(x)!=='PENDING')return false;var xp=x.payload||{};return fold(xp.name)===fold(p.name)&&fold(xp.address)===fold(p.address);});
+      if(samePending.length){form.appendChild(node('div','tla-error','Có '+samePending.length+' đề xuất PENDING khác cùng tên + địa chỉ. Duyệt ID này không tự xử lý các ID còn lại.'));}
 
       form.appendChild(node('div','tla-section-title','Xác nhận duyệt'));
       var flags=node('div','tla-flags');
@@ -348,7 +364,7 @@
       flags.appendChild(approvedLab);
       form.appendChild(flags);
       form.appendChild(node('div','tla-note','Tick APPROVED trước khi bấm “Duyệt & lưu”. Đây là bước xác nhận cuối để đưa dữ liệu đã duyệt vào Places.'));
-      form.appendChild(node('div','tla-note','V17.78: dữ liệu quản trị đọc/ghi trực tiếp Supabase. Trạng thái legacy cũ được tự chuẩn hóa về PENDING; chỉ báo thành công khi Places đã đổi thật và đề xuất đã thành APPROVED.'));
+      form.appendChild(node('div','tla-note','V17.80: quản trị Supabase trực tiếp. Sau khi duyệt thành công hệ thống chuyển sang tab Đã duyệt và mở đúng Suggestion ID vừa xử lý để không nhầm với các bản gửi trùng.'));
 
       form.appendChild(node('div','tla-section-title','Cách xử lý đề xuất'));
       var reviewBox=node('div','tla-note');
@@ -507,6 +523,7 @@
 
           try{
             yes.disabled=no.disabled=true;
+            if(!catCtl.input.value)throw new Error('Hãy chọn Danh mục / Category chuẩn trước khi duyệt.');
             var fp=collect(form,p);
             applyTopScopes(fp,form);
             fp.approval_status='APPROVED';
@@ -536,8 +553,11 @@
               throw new Error('Địa chỉ mới chưa được ghi vào địa điểm gốc. Không chuyển đề xuất sang đã duyệt.');
             }
 
-            state.suggestions.active='';
+            var remainingDup=Number(reviewResult.remaining_duplicate_pending);if(!isFinite(remainingDup))remainingDup=samePending.length;
+            state.suggestions.active=s.id;
+            state.suggestions.status='APPROVED';
             await suggestions(document.getElementById('tlaContent'));
+            alert('Đã duyệt thành công Suggestion ID: '+s.id+'\nTrạng thái: APPROVED'+(remainingDup?'\nCòn '+remainingDup+' đề xuất trùng đang PENDING.':''));
           }catch(e){
             errBox(detail,e.message||String(e));
           }finally{
@@ -551,7 +571,8 @@
             yes.disabled=no.disabled=true;
             var rejectResult=await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});
             if(!rejectResult||rejectResult.status!=='REJECTED')throw new Error('Không xác nhận được trạng thái REJECTED.');
-            state.suggestions.active='';
+            state.suggestions.active=s.id;
+            state.suggestions.status='REJECTED';
             await suggestions(document.getElementById('tlaContent'));
           }catch(e){
             errBox(detail,e.message||String(e));
