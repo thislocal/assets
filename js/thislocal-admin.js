@@ -1,3 +1,4 @@
+/* THIS LOCAL ADMIN V17.76 - safe suggestion review: APPROVED confirmation + create/update target selection */
 /* THIS LOCAL ADMIN V17.72 - DMS/decimal coordinate normalization */
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
 /* THIS LOCAL ADMIN V17.71: accept decimal and DMS coordinates; normalize to decimal before saving. */
@@ -271,21 +272,277 @@
   }
 
   async function suggestionEditor(detail,id){
-    detail.innerHTML='<div class="tla-status">Đang tải...</div>';try{var d=await api('?action=suggestionDetail&id='+encodeURIComponent(id)),s=d.suggestion,p=s.payload||{};detail.innerHTML='';
-      var h=node('div','tla-form-head'),l=node('div','');l.appendChild(node('h2','',p.name||'Đề xuất'));l.appendChild(node('div','tla-muted',(s.submit_type||'add')+' · '+fmt(s.created_at)+' · '+clean(s.submitter_name||s.submitter_contact)));h.appendChild(l);detail.appendChild(h);
-      if(d.target){detail.appendChild(node('div','tla-note','Địa điểm gốc: '+(d.target.name||d.target.id)+' · '+(d.target.address||'')))}
+    detail.innerHTML='<div class="tla-status">Đang tải...</div>';
+    try{
+      var d=await api('?action=suggestionDetail&id='+encodeURIComponent(id)),s=d.suggestion,p=s.payload||{};
+      detail.innerHTML='';
+
+      var originalUpdate=clean(s.submit_type).toLowerCase()==='update';
+      var h=node('div','tla-form-head'),l=node('div','');
+      l.appendChild(node('h2','',p.name||'Đề xuất'));
+      l.appendChild(node('div','tla-muted',(originalUpdate?'Cập nhật địa điểm':'Thêm mới')+' · '+fmt(s.created_at)+' · '+clean(s.submitter_name||s.submitter_contact)));
+      h.appendChild(l);detail.appendChild(h);
+
+      if(d.target){
+        detail.appendChild(node('div','tla-note','Địa điểm gốc hiện tại: '+(d.target.name||d.target.id)+' · '+(d.target.address||'')+' · ID: '+d.target.id));
+      }
+
       var form=node('div',''),grid=node('div','tla-grid');
       function sf(label,name,type,wide){var f=field(label,name,p[name],type,wide);grid.appendChild(f.wrap);return f.input}
-      var cat=field('Category','category_id','','select');categoryOptions(cat.input,p.category_id||'');cat.input.onchange=function(){var c=byId()[cat.input.value];if(c){form.querySelector('[data-field="category"]').value=c.name_vi;form.querySelector('[data-field="parent_category"]').value=parentName(c.id)}};grid.appendChild(cat.wrap);
-      sf('Tên Category','category');sf('Danh mục cha','parent_category');sf('Tên địa điểm','name','text',true);sf('Địa chỉ','address','text',true);sf('Điện thoại','phone');sf('Website','business_url');sf('Google Maps','map_url');sf('Giờ','hours');sf('Giá','price');var latSug=sf('Vĩ độ','lat'),lngSug=sf('Kinh độ','lng');latSug.placeholder='22.483833 hoặc 22°29\'01.8"N';lngSug.placeholder='103.972194 hoặc 103°58\'19.9"E';bindCoordinateInput(latSug,'lat');bindCoordinateInput(lngSug,'lng');sf('Tỉnh/thành','province');sf('Khu vực','locality');sf('Ghi chú','note','textarea',true);form.appendChild(grid);form.appendChild(node('div','tla-note','Có thể nhập tọa độ thập phân hoặc DMS, ví dụ 22°29\'01.8"N và 103°58\'19.9"E. Khi rời ô hoặc duyệt, hệ thống tự chuyển về số thập phân 6 chữ số.'));
-      var flags=node('div','tla-flags');[['is_hot','Hot'],['is_trusted','Uy tín'],['verified','Xác minh']].forEach(function(x){var lab=node('label','tla-check'),i=node('input','');i.type='checkbox';i.checked=x[0]==='verified'?p.verified==='TRUE':checked(p[x[0]]);i.setAttribute('data-field',x[0]);lab.appendChild(i);lab.appendChild(document.createTextNode(x[1]));flags.appendChild(lab)});form.appendChild(flags);
-      var top=node('div','tla-grid');var trf=field('TOP rank','top_rank',p.top_rank);top.appendChild(trf.wrap);top.appendChild(topScopePicker(p.top_scope,p));var tlf=field('Khu vực TOP','top_locality',p.top_locality),trd=field('Bán kính TOP (km)','top_radius_km',p.top_radius_km);top.appendChild(tlf.wrap);top.appendChild(trd.wrap);form.appendChild(top);
-      var note=field('Ghi chú quản trị','admin_note',s.admin_note||'','textarea',true);form.appendChild(note.wrap);detail.appendChild(form);
+
+      var cat=field('Category','category_id','','select');
+      categoryOptions(cat.input,p.category_id||'');
+      cat.input.onchange=function(){
+        var c=byId()[cat.input.value];
+        if(c){
+          form.querySelector('[data-field="category"]').value=c.name_vi;
+          form.querySelector('[data-field="parent_category"]').value=parentName(c.id);
+        }
+      };
+      grid.appendChild(cat.wrap);
+
+      sf('Tên Category','category');
+      sf('Danh mục cha','parent_category');
+      sf('Tên địa điểm','name','text',true);
+      sf('Địa chỉ','address','text',true);
+      sf('Điện thoại','phone');
+      sf('Website','business_url');
+      sf('Google Maps','map_url');
+      sf('Giờ','hours');
+      sf('Giá','price');
+
+      var latSug=sf('Vĩ độ','lat'),lngSug=sf('Kinh độ','lng');
+      latSug.placeholder='22.483833 hoặc 22°29\'01.8"N';
+      lngSug.placeholder='103.972194 hoặc 103°58\'19.9"E';
+      bindCoordinateInput(latSug,'lat');
+      bindCoordinateInput(lngSug,'lng');
+
+      sf('Tỉnh/thành','province');
+      sf('Khu vực','locality');
+      sf('Ghi chú','note','textarea',true);
+      form.appendChild(grid);
+      form.appendChild(node('div','tla-note','Có thể nhập tọa độ thập phân hoặc DMS. Khi rời ô hoặc duyệt, hệ thống tự chuyển về số thập phân 6 chữ số.'));
+
+      form.appendChild(node('div','tla-section-title','Xác nhận duyệt'));
+      var flags=node('div','tla-flags');
+      [['is_hot','Hot'],['is_trusted','Uy tín'],['verified','Xác minh']].forEach(function(x){
+        var lab=node('label','tla-check'),i=node('input','');
+        i.type='checkbox';
+        i.checked=x[0]==='verified'?p.verified==='TRUE':checked(p[x[0]]);
+        i.setAttribute('data-field',x[0]);
+        lab.appendChild(i);lab.appendChild(document.createTextNode(x[1]));flags.appendChild(lab);
+      });
+      var approvedLab=node('label','tla-check'),approvedCheck=node('input','');
+      approvedCheck.type='checkbox';
+      approvedCheck.checked=false;
+      approvedLab.appendChild(approvedCheck);
+      approvedLab.appendChild(document.createTextNode('APPROVED'));
+      flags.appendChild(approvedLab);
+      form.appendChild(flags);
+      form.appendChild(node('div','tla-note','Tick APPROVED trước khi bấm “Duyệt & lưu”. Đây là bước xác nhận cuối để đưa dữ liệu đã duyệt vào Places.'));
+
+      form.appendChild(node('div','tla-section-title','Cách xử lý đề xuất'));
+      var reviewBox=node('div','tla-note');
+      var modeRow=node('div','tla-grid');
+
+      var modeField=node('div','tla-field');
+      modeField.appendChild(node('label','','Xử lý thành'));
+      var modeSelect=node('select','');
+      addSelectOptions(modeSelect,[
+        {value:'create',label:'Thêm địa điểm mới'},
+        {value:'update',label:'Cập nhật địa điểm có sẵn'}
+      ]);
+      modeSelect.value=(originalUpdate&&clean(s.target_id))?'update':'create';
+      modeField.appendChild(modeSelect);
+      modeRow.appendChild(modeField);
+
+      var targetIdField=node('div','tla-field');
+      targetIdField.appendChild(node('label','','ID địa điểm gốc'));
+      var targetInput=node('input','');
+      targetInput.type='text';
+      targetInput.placeholder='Chọn từ kết quả tìm kiếm bên dưới';
+      targetInput.value=clean(s.target_id||(d.target&&d.target.id)||'');
+      targetIdField.appendChild(targetInput);
+      modeRow.appendChild(targetIdField);
+      reviewBox.appendChild(modeRow);
+
+      var modeHint=node('div','tla-note','');
+      reviewBox.appendChild(modeHint);
+
+      var searchRow=node('div','tla-grid');
+      var searchField=node('div','tla-field');
+      searchField.appendChild(node('label','','Tìm địa điểm đã có'));
+      var targetSearch=node('input','');
+      targetSearch.type='text';
+      targetSearch.placeholder='Nhập tên địa điểm để kiểm tra trùng...';
+      targetSearch.value=clean(p.name);
+      searchField.appendChild(targetSearch);
+      searchRow.appendChild(searchField);
+
+      var searchAction=node('div','tla-field');
+      searchAction.appendChild(node('label','',' '));
+      var searchBtn=node('button','tla-btn','Tìm địa điểm');
+      searchBtn.type='button';
+      searchAction.appendChild(searchBtn);
+      searchRow.appendChild(searchAction);
+      reviewBox.appendChild(searchRow);
+
+      var selectedTarget=node('div','tla-note','');
+      reviewBox.appendChild(selectedTarget);
+      var targetResults=node('div','tla-list');
+      reviewBox.appendChild(targetResults);
+
+      function setSelectedTarget(place){
+        if(!place)return;
+        targetInput.value=clean(place.id);
+        modeSelect.value='update';
+        selectedTarget.textContent='Sẽ cập nhật vào: '+(place.name||place.id)+' · '+(place.address||'')+' · ID: '+place.id;
+        updateModeUi();
+      }
+
+      function updateModeUi(){
+        var isUpdate=modeSelect.value==='update';
+        targetIdField.style.display=isUpdate?'':'none';
+        if(isUpdate){
+          modeHint.textContent='CẬP NHẬT: dữ liệu đã duyệt sẽ ghi vào đúng ID địa điểm gốc. Không tạo thêm địa điểm mới.';
+          if(d.target&&clean(targetInput.value)===clean(d.target.id)){
+            selectedTarget.textContent='Sẽ cập nhật vào: '+(d.target.name||d.target.id)+' · '+(d.target.address||'')+' · ID: '+d.target.id;
+          }else if(!clean(targetInput.value)){
+            selectedTarget.textContent='Chưa chọn địa điểm gốc. Hãy tìm và chọn một địa điểm bên dưới.';
+          }
+        }else{
+          modeHint.textContent='THÊM MỚI: hệ thống sẽ tạo một ID địa điểm mới. Nếu địa điểm này đã có trên THIS LOCAL, hãy chuyển sang “Cập nhật địa điểm có sẵn” để tránh trùng dữ liệu.';
+          selectedTarget.textContent='Đang chọn: tạo địa điểm mới.';
+        }
+      }
+      modeSelect.onchange=updateModeUi;
+      targetInput.oninput=function(){
+        if(modeSelect.value==='update'){
+          selectedTarget.textContent=clean(targetInput.value)?('ID địa điểm gốc: '+clean(targetInput.value)):'Chưa chọn địa điểm gốc.';
+        }
+      };
+      updateModeUi();
+
+      async function searchExistingPlaces(){
+        var q=clean(targetSearch.value);
+        if(!q){targetResults.innerHTML='<div class="tla-status">Nhập tên địa điểm cần tìm.</div>';return;}
+        searchBtn.disabled=true;
+        targetResults.innerHTML='<div class="tla-status">Đang tìm địa điểm đã có...</div>';
+        try{
+          var r=await api('?action=places&limit=12&offset=0&status=APPROVED&q='+encodeURIComponent(q));
+          var items=r.places||[];
+          targetResults.innerHTML='';
+          if(!items.length){
+            targetResults.appendChild(node('div','tla-status','Không tìm thấy địa điểm APPROVED có tên phù hợp.'));
+            return;
+          }
+          if(modeSelect.value==='create'){
+            targetResults.appendChild(node('div','tla-note','Tìm thấy '+items.length+' địa điểm có tên gần giống. Hãy kiểm tra trước khi tạo mới.'));
+          }
+          items.forEach(function(place){
+            var b=node('button','tla-item');
+            b.type='button';
+            b.appendChild(placeBadges(place));
+            b.appendChild(node('strong','',place.name||place.id));
+            b.appendChild(node('small','',(place.phone?place.phone+' · ':'')+(place.address||'')+' · ID: '+place.id));
+            b.onclick=function(){setSelectedTarget(place);};
+            targetResults.appendChild(b);
+          });
+        }catch(e){
+          targetResults.innerHTML='<div class="tla-error">'+esc(e.message||String(e))+'</div>';
+        }finally{
+          searchBtn.disabled=false;
+        }
+      }
+      searchBtn.onclick=searchExistingPlaces;
+      targetSearch.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();searchExistingPlaces();}};
+
+      form.appendChild(reviewBox);
+
+      var top=node('div','tla-grid');
+      var trf=field('TOP rank','top_rank',p.top_rank);
+      top.appendChild(trf.wrap);
+      top.appendChild(topScopePicker(p.top_scope,p));
+      var tlf=field('Khu vực TOP','top_locality',p.top_locality),trd=field('Bán kính TOP (km)','top_radius_km',p.top_radius_km);
+      top.appendChild(tlf.wrap);top.appendChild(trd.wrap);form.appendChild(top);
+
+      var note=field('Ghi chú quản trị','admin_note',s.admin_note||'','textarea',true);
+      form.appendChild(note.wrap);
+      detail.appendChild(form);
+
       var act=node('div','tla-actions');
-      if(s.status==='PENDING'){var yes=node('button','tla-btn primary','Duyệt & lưu'),no=node('button','tla-btn danger','Từ chối');act.appendChild(yes);act.appendChild(no);yes.onclick=async function(){if(!confirm('Duyệt đề xuất và ghi vào Places?'))return;try{yes.disabled=no.disabled=true;var fp=collect(form,p);applyTopScopes(fp,form);fp.approval_status='APPROVED';fp.verified=fp.verified?'TRUE':'FALSE';await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'approve',final_payload:fp,admin_note:note.input.value})});suggestions(document.getElementById('tlaContent'))}catch(e){errBox(detail,e.message)}finally{yes.disabled=no.disabled=false}};no.onclick=async function(){if(!confirm('Từ chối đề xuất này?'))return;try{yes.disabled=no.disabled=true;await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});suggestions(document.getElementById('tlaContent'))}catch(e){errBox(detail,e.message)}finally{yes.disabled=no.disabled=false}}}
-      else act.appendChild(node('div','tla-note','Đã xử lý: '+s.status+(s.reviewed_by?' · '+s.reviewed_by:'')+(s.reviewed_at?' · '+fmt(s.reviewed_at):'')));
-      detail.appendChild(act)
-    }catch(e){detail.innerHTML='<div class="tla-error">'+esc(e.message||String(e))+'</div>'}
+      if(s.status==='PENDING'){
+        var yes=node('button','tla-btn primary','Duyệt & lưu'),no=node('button','tla-btn danger','Từ chối');
+        yes.type='button';no.type='button';
+        act.appendChild(yes);act.appendChild(no);
+
+        yes.onclick=async function(){
+          if(!approvedCheck.checked){
+            errBox(detail,'Hãy tick APPROVED trước khi duyệt.');
+            approvedCheck.focus();
+            return;
+          }
+
+          var reviewMode=modeSelect.value==='update'?'update':'create';
+          var targetPlaceId=clean(targetInput.value);
+          if(reviewMode==='update'&&!targetPlaceId){
+            errBox(detail,'Bạn đã chọn “Cập nhật địa điểm có sẵn” nhưng chưa chọn ID địa điểm gốc.');
+            targetSearch.focus();
+            return;
+          }
+
+          var confirmText=reviewMode==='update'
+            ?('Duyệt và CẬP NHẬT trực tiếp địa điểm ID '+targetPlaceId+'?\n\nBản ghi cũ sẽ được sửa. Hệ thống KHÔNG tạo địa điểm mới.')
+            :'Duyệt và TẠO ĐỊA ĐIỂM MỚI?\n\nHãy chắc chắn địa điểm này chưa tồn tại để tránh dữ liệu trùng.';
+          if(!confirm(confirmText))return;
+
+          try{
+            yes.disabled=no.disabled=true;
+            var fp=collect(form,p);
+            applyTopScopes(fp,form);
+            fp.approval_status='APPROVED';
+            fp.verified=fp.verified?'TRUE':'FALSE';
+
+            await api('',{
+              method:'POST',
+              body:JSON.stringify({
+                action:'reviewSuggestion',
+                id:s.id,
+                decision:'approve',
+                approved:true,
+                review_mode:reviewMode,
+                target_place_id:reviewMode==='update'?targetPlaceId:'',
+                final_payload:fp,
+                admin_note:note.input.value
+              })
+            });
+            suggestions(document.getElementById('tlaContent'));
+          }catch(e){
+            errBox(detail,e.message||String(e));
+          }finally{
+            yes.disabled=no.disabled=false;
+          }
+        };
+
+        no.onclick=async function(){
+          if(!confirm('Từ chối đề xuất này?'))return;
+          try{
+            yes.disabled=no.disabled=true;
+            await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});
+            suggestions(document.getElementById('tlaContent'));
+          }catch(e){
+            errBox(detail,e.message||String(e));
+          }finally{
+            yes.disabled=no.disabled=false;
+          }
+        };
+      }else{
+        act.appendChild(node('div','tla-note','Đã xử lý: '+s.status+(s.approved_place_id?' · Place ID: '+s.approved_place_id:'')+(s.reviewed_by?' · '+s.reviewed_by:'')+(s.reviewed_at?' · '+fmt(s.reviewed_at):'')));
+      }
+      detail.appendChild(act);
+    }catch(e){
+      detail.innerHTML='<div class="tla-error">'+esc(e.message||String(e))+'</div>';
+    }
   }
 
   function categoryFallbackUrl(c){
