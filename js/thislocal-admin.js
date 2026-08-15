@@ -64,6 +64,32 @@
     i.setAttribute('data-field',name);w.appendChild(l);w.appendChild(i);return{wrap:w,input:i}
   }
   function checked(v){return v===true||String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toUpperCase()==='TRUE'}
+  function topScopeState(value,base){
+    var raw=clean(value),out={THIS_LOCAL:false,LOCALITY:false,RADIUS:false};
+    function n(v){return clean(v).toLowerCase().normalize?clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d'):clean(v).toLowerCase().replace(/đ/g,'d')}
+    function accept(part){var s=n(part).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');if(!s)return;if(s.indexOf('this_local')>-1||s.indexOf('thislocal')>-1||s.indexOf('global')>-1||s.indexOf('toan_data')>-1){out.THIS_LOCAL=true;return}if(s.indexOf('radius')>-1||s.indexOf('ban_kinh')>-1||s.indexOf('khoang_cach')>-1||s.indexOf('distance')>-1){out.RADIUS=true;return}if(s==='local'||s.indexOf('locality')>-1||s.indexOf('dia_phuong')>-1||s.indexOf('khu_vuc')>-1||s.indexOf('province')>-1||s==='tinh'||s.indexOf('tinh_thanh')>-1){out.LOCALITY=true;return}out.LOCALITY=true}
+    if(raw)raw.split(/[,;|+]+/).forEach(accept);
+    if(!out.THIS_LOCAL&&!out.LOCALITY&&!out.RADIUS&&base&&clean(base.top_rank)){if(Number(base.top_radius_km)>0)out.RADIUS=true;else if(clean(base.top_locality))out.LOCALITY=true;else out.THIS_LOCAL=true}
+    return out;
+  }
+  function topScopePicker(value,base){
+    var state=topScopeState(value,base),wrap=node('div','tla-field tla-top-scope-field'),label=node('label','','Phạm vi TOP'),flags=node('div','tla-flags');wrap.appendChild(label);
+    [['THIS_LOCAL','TOP THIS LOCAL'],['LOCALITY','TOP khu vực'],['RADIUS','TOP bán kính']].forEach(function(x){var l=node('label','tla-check'),i=node('input','');i.type='checkbox';i.checked=!!state[x[0]];i.setAttribute('data-top-scope',x[0]);l.appendChild(i);l.appendChild(document.createTextNode(x[1]));flags.appendChild(l)});
+    wrap.appendChild(flags);return wrap;
+  }
+  function selectedTopScopes(rootNode){return Array.prototype.slice.call(rootNode.querySelectorAll('[data-top-scope]:checked')).map(function(i){return i.getAttribute('data-top-scope')})}
+  function applyTopScopes(data,rootNode){
+    var scopes=selectedTopScopes(rootNode);
+    if(!scopes.length){data.top_scope='';data.top_rank='';data.top_locality='';data.top_radius_km=null;return data}
+    if(!clean(data.top_rank))throw new Error('Đã chọn phạm vi TOP nhưng chưa nhập TOP rank, ví dụ TOP1.');
+    if(scopes.indexOf('LOCALITY')>-1&&!clean(data.top_locality||data.locality||data.province))throw new Error('TOP khu vực cần có Khu vực TOP, Khu vực hoặc Tỉnh/thành.');
+    if(scopes.indexOf('RADIUS')>-1){
+      var r=Number(data.top_radius_km),lat=Number(data.lat),lng=Number(data.lng);
+      if(!isFinite(r)||r<=0)throw new Error('TOP bán kính cần nhập Bán kính TOP (km) lớn hơn 0.');
+      if(!isFinite(lat)||!isFinite(lng)||lat<-90||lat>90||lng<-180||lng>180)throw new Error('TOP bán kính cần tọa độ Vĩ độ/Kinh độ hợp lệ của địa điểm.');
+    }
+    data.top_scope=scopes.join(',');return data;
+  }
   function collect(rootNode,base){
     var o=Object.assign({},base||{});
     rootNode.querySelectorAll('[data-field]').forEach(function(i){
@@ -151,14 +177,14 @@
     var flags=node('div','tla-flags');
     [['is_hot','Hot'],['is_trusted','Uy tín'],['verified','Đã xác minh']].forEach(function(x){var l=node('label','tla-check'),i=node('input','');i.type='checkbox';i.checked=x[0]==='verified'?p.verified==='TRUE':checked(p[x[0]]);i.setAttribute('data-field',x[0]);l.appendChild(i);l.appendChild(document.createTextNode(x[1]));flags.appendChild(l)});
     var approved=node('label','tla-check'),ap=node('input','');ap.type='checkbox';ap.checked=clean(p.approval_status).toUpperCase()==='APPROVED';ap.setAttribute('data-field','_approved_checkbox');approved.appendChild(ap);approved.appendChild(document.createTextNode('APPROVED'));flags.appendChild(approved);form.appendChild(flags);
-    var top=node('div','tla-grid');function topf(label,name){var f=field(label,name,p[name]);top.appendChild(f.wrap)}topf('TOP rank','top_rank');topf('Phạm vi TOP','top_scope');topf('Địa phương TOP','top_locality');topf('Bán kính TOP (km)','top_radius_km');form.appendChild(top);
+    var top=node('div','tla-grid');function topf(label,name){var f=field(label,name,p[name]);top.appendChild(f.wrap)}topf('TOP rank','top_rank');top.appendChild(topScopePicker(p.top_scope,p));topf('Khu vực TOP','top_locality');topf('Bán kính TOP (km)','top_radius_km');form.appendChild(top);
     detail.appendChild(node('div','tla-section-title','Trạng thái & nguồn'));
     var extra=node('div','tla-grid'),bs=field('Trạng thái kinh doanh','business_status','', 'select');[['OPEN','Đang mở'],['TEMPORARILY_CLOSED','Tạm đóng'],['PERMANENTLY_CLOSED','Đóng vĩnh viễn']].forEach(function(x){var o=node('option','',x[1]);o.value=x[0];if(clean(p.business_status).toUpperCase()===x[0])o.selected=true;bs.input.appendChild(o)});extra.appendChild(bs.wrap);
     function ef(l,n,t,w){var f=field(l,n,p[n],t,w);extra.appendChild(f.wrap)}ef('Nguồn','source_name');ef('URL nguồn','source_url');ef('Giấy phép','source_license');ef('Ngày kiểm tra nguồn','source_checked_at');ef('ID nguồn','source_place_id');ef('Chất lượng dữ liệu','data_quality','text',true);form.appendChild(extra);
     var actions=node('div','tla-actions'),save=node('button','tla-btn primary','Lưu thay đổi');save.type='button';actions.appendChild(save);
     if(p.id){var del=node('button','tla-btn danger','Xóa địa điểm');del.type='button';del.onclick=async function(){if(!confirm('Xóa vĩnh viễn địa điểm này? Ratings liên quan cũng có thể bị xóa theo khóa ngoại.'))return;try{await api('',{method:'POST',body:JSON.stringify({action:'deletePlace',id:p.id})});state.places.active='';render()}catch(e){errBox(detail,e.message)}};actions.appendChild(del)}
     form.appendChild(actions);
-    save.onclick=async function(){try{save.disabled=true;var data=collect(form,p);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
+    save.onclick=async function(){try{save.disabled=true;var data=collect(form,p);applyTopScopes(data,form);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
   }
 
   async function suggestions(c){
@@ -178,10 +204,10 @@
       var cat=field('Category','category_id','','select');categoryOptions(cat.input,p.category_id||'');cat.input.onchange=function(){var c=byId()[cat.input.value];if(c){form.querySelector('[data-field="category"]').value=c.name_vi;form.querySelector('[data-field="parent_category"]').value=parentName(c.id)}};grid.appendChild(cat.wrap);
       sf('Tên Category','category');sf('Danh mục cha','parent_category');sf('Tên địa điểm','name','text',true);sf('Địa chỉ','address','text',true);sf('Điện thoại','phone');sf('Website','business_url');sf('Google Maps','map_url');sf('Giờ','hours');sf('Giá','price');sf('Vĩ độ','lat');sf('Kinh độ','lng');sf('Tỉnh/thành','province');sf('Khu vực','locality');sf('Ghi chú','note','textarea',true);form.appendChild(grid);
       var flags=node('div','tla-flags');[['is_hot','Hot'],['is_trusted','Uy tín'],['verified','Xác minh']].forEach(function(x){var lab=node('label','tla-check'),i=node('input','');i.type='checkbox';i.checked=x[0]==='verified'?p.verified==='TRUE':checked(p[x[0]]);i.setAttribute('data-field',x[0]);lab.appendChild(i);lab.appendChild(document.createTextNode(x[1]));flags.appendChild(lab)});form.appendChild(flags);
-      var top=node('div','tla-grid');['top_rank','top_scope','top_locality','top_radius_km'].forEach(function(n){var f=field(n,n,p[n]);top.appendChild(f.wrap)});form.appendChild(top);
+      var top=node('div','tla-grid');var trf=field('TOP rank','top_rank',p.top_rank);top.appendChild(trf.wrap);top.appendChild(topScopePicker(p.top_scope,p));var tlf=field('Khu vực TOP','top_locality',p.top_locality),trd=field('Bán kính TOP (km)','top_radius_km',p.top_radius_km);top.appendChild(tlf.wrap);top.appendChild(trd.wrap);form.appendChild(top);
       var note=field('Ghi chú quản trị','admin_note',s.admin_note||'','textarea',true);form.appendChild(note.wrap);detail.appendChild(form);
       var act=node('div','tla-actions');
-      if(s.status==='PENDING'){var yes=node('button','tla-btn primary','Duyệt & lưu'),no=node('button','tla-btn danger','Từ chối');act.appendChild(yes);act.appendChild(no);yes.onclick=async function(){if(!confirm('Duyệt đề xuất và ghi vào Places?'))return;try{yes.disabled=no.disabled=true;var fp=collect(form,p);fp.approval_status='APPROVED';fp.verified=fp.verified?'TRUE':'FALSE';await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'approve',final_payload:fp,admin_note:note.input.value})});suggestions(document.getElementById('tlaContent'))}catch(e){errBox(detail,e.message)}finally{yes.disabled=no.disabled=false}};no.onclick=async function(){if(!confirm('Từ chối đề xuất này?'))return;try{yes.disabled=no.disabled=true;await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});suggestions(document.getElementById('tlaContent'))}catch(e){errBox(detail,e.message)}finally{yes.disabled=no.disabled=false}}}
+      if(s.status==='PENDING'){var yes=node('button','tla-btn primary','Duyệt & lưu'),no=node('button','tla-btn danger','Từ chối');act.appendChild(yes);act.appendChild(no);yes.onclick=async function(){if(!confirm('Duyệt đề xuất và ghi vào Places?'))return;try{yes.disabled=no.disabled=true;var fp=collect(form,p);applyTopScopes(fp,form);fp.approval_status='APPROVED';fp.verified=fp.verified?'TRUE':'FALSE';await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'approve',final_payload:fp,admin_note:note.input.value})});suggestions(document.getElementById('tlaContent'))}catch(e){errBox(detail,e.message)}finally{yes.disabled=no.disabled=false}};no.onclick=async function(){if(!confirm('Từ chối đề xuất này?'))return;try{yes.disabled=no.disabled=true;await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});suggestions(document.getElementById('tlaContent'))}catch(e){errBox(detail,e.message)}finally{yes.disabled=no.disabled=false}}}
       else act.appendChild(node('div','tla-note','Đã xử lý: '+s.status+(s.reviewed_by?' · '+s.reviewed_by:'')+(s.reviewed_at?' · '+fmt(s.reviewed_at):'')));
       detail.appendChild(act)
     }catch(e){detail.innerHTML='<div class="tla-error">'+esc(e.message||String(e))+'</div>'}
