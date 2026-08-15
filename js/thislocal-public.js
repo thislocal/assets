@@ -1,4 +1,4 @@
-/* THIS LOCAL public runtime extracted from V17.59. */
+/* THIS LOCAL public runtime extracted from V17.60. */
 
 /* ---- original script block 6 ---- */
 (function(){
@@ -1106,6 +1106,20 @@
       addressInput.placeholder='Số nhà, đường/phố, phường/xã, tỉnh/thành';
       addHelp(addressField,'Bắt buộc. Nhập địa chỉ đủ để người khác có thể tìm tới địa điểm.');
       form.appendChild(addressField);
+
+      var areaGrid=el('div','vlc-grid');
+      var provinceField=inputField('Tỉnh/thành','province',place&&place.province,false);
+      var localityField=inputField('Khu vực','locality',place&&place.locality,false);
+      var provinceInput=provinceField.querySelector('input');
+      var localityInput=localityField.querySelector('input');
+      provinceInput.placeholder='Ví dụ: Lào Cai';
+      localityInput.placeholder='Ví dụ: Phường Lào Cai, Sa Pa...';
+      addHelp(provinceField,'Dùng để xác định TOP khu vực. Có thể để trống nếu chưa rõ.');
+      addHelp(localityField,'Khu vực nhỏ hơn tỉnh/thành, ví dụ phường, xã, thị trấn hoặc thành phố.');
+      areaGrid.appendChild(provinceField);
+      areaGrid.appendChild(localityField);
+      form.appendChild(areaGrid);
+
       form.appendChild(inputField('Link Google Maps','map_url',place&&place.map_url,false,'url'));
       var websiteField=inputField('Website','business_url',place&&place.business_url,false,'text');
       websiteField.querySelector('input').placeholder='Ví dụ: thislocal.vn';
@@ -1308,8 +1322,17 @@
         geoBtn.disabled=true;geoBtn.textContent='Đang lấy vị trí...';
         navigator.geolocation.getCurrentPosition(function(pos){
           latInp.value=pos.coords.latitude;lngInp.value=pos.coords.longitude;
-          geoBtn.textContent='Đã lấy vị trí';geoBtn.disabled=false;
-        },function(){geoBtn.textContent='Không lấy được vị trí';geoBtn.disabled=false;},{timeout:8000});
+          reverseCurrentLocality(pos,function(meta){
+            if(meta){
+              if(provinceInput&&!safe(provinceInput.value))provinceInput.value=safe(meta.region);
+              if(localityInput&&!safe(localityInput.value))localityInput.value=safe(meta.locality);
+            }
+            geoBtn.textContent='Đã lấy vị trí địa điểm';geoBtn.disabled=false;
+          });
+          setTimeout(function(){
+            if(geoBtn.disabled){geoBtn.textContent='Đã lấy tọa độ';geoBtn.disabled=false;}
+          },2500);
+        },function(){geoBtn.textContent='Không lấy được vị trí';geoBtn.disabled=false;},{enableHighAccuracy:true,timeout:10000,maximumAge:0});
       });
 
       var hp=el('input','vlc-hp');hp.name='website';hp.autocomplete='off';hp.tabIndex=-1;form.appendChild(hp);
@@ -2136,9 +2159,12 @@
           var actual=norm(area);if(!actual)return false;
           return wanted.indexOf(actual)>-1||actual.indexOf(wanted)>-1;
         }
-        function radiusMembership(place,scope,loc){
-          var radius=Number(place&&place.top_radius_km);
-          if(!isFinite(radius)||radius<=0)radius=Number(scope&&scope.radius);
+        function radiusMembership(place,scope,loc,forcedRadius){
+          var radius=Number(forcedRadius);
+          if(!isFinite(radius)||radius<=0){
+            radius=Number(place&&place.top_radius_km);
+            if(!isFinite(radius)||radius<=0)radius=Number(scope&&scope.radius);
+          }
           if(!loc||!isFinite(Number(loc.lat))||!isFinite(Number(loc.lng))||!isFinite(radius)||radius<=0||!isFinite(Number(place.lat))||!isFinite(Number(place.lng)))return null;
           var km=haversineHome(Number(loc.lat),Number(loc.lng),Number(place.lat),Number(place.lng));
           if(!isFinite(km)||km>radius)return null;
@@ -2150,17 +2176,26 @@
 
           /* Phạm vi gốc. */
           if(scope.kind==='global')out.push({rank:rank,group:'global',original:'global',label:'TOP THIS LOCAL',distance:NaN});
-          if(scope.kind==='local'&&areaMatches(place,scope,loc))out.push({rank:rank,group:'local',original:'local',label:'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'),distance:NaN});
+
+          var localMatch=scope.kind==='local'&&areaMatches(place,scope,loc);
+          if(localMatch)out.push({rank:rank,group:'local',original:'local',label:'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'),distance:NaN});
+
           if(scope.kind==='radius'){
             var ownRadius=radiusMembership(place,scope,loc);
-            if(ownRadius)out.push({rank:rank,group:'radius',original:'radius',label:'TOP '+(Math.round(ownRadius.radius*10)/10)+' km',distance:ownRadius.distance});
+            if(ownRadius)out.push({rank:rank,group:'radius',original:'radius',label:'TOP '+(Math.round(ownRadius.radius*10)/10)+' km',distance:ownRadius.distance,radius:ownRadius.radius});
           }
 
-          /* V17.59: TOP THIS LOCAL được kế thừa xuống phạm vi nhỏ hơn khi thực tế phù hợp. */
+          /* V17.60: TOP cấp trên được kế thừa xuống "quanh bạn" theo bán kính mặc định 25 km.
+             TOP RADIUS vẫn dùng bán kính riêng do quản trị viên cấu hình. */
           if(scope.kind==='global'){
             if(areaMatches(place,scope,loc))out.push({rank:rank,group:'local',original:'global',label:'TOP THIS LOCAL',distance:NaN,inherited:true});
-            var inheritedRadius=radiusMembership(place,scope,loc);
-            if(inheritedRadius)out.push({rank:rank,group:'radius',original:'global',label:'TOP THIS LOCAL',distance:inheritedRadius.distance,radius:inheritedRadius.radius,inherited:true});
+            var inheritedGlobalRadius=radiusMembership(place,scope,loc,GUIDE_RADIUS_KM);
+            if(inheritedGlobalRadius)out.push({rank:rank,group:'radius',original:'global',label:'TOP THIS LOCAL',distance:inheritedGlobalRadius.distance,radius:GUIDE_RADIUS_KM,inherited:true});
+          }
+
+          if(localMatch){
+            var inheritedLocalRadius=radiusMembership(place,scope,loc,GUIDE_RADIUS_KM);
+            if(inheritedLocalRadius)out.push({rank:rank,group:'radius',original:'local',label:'TOP '+(scope.area||cleanText(place.locality)||cleanText(place.province)||'khu vực'),distance:inheritedLocalRadius.distance,radius:GUIDE_RADIUS_KM,inherited:true});
           }
           return out;
         }
@@ -2173,7 +2208,12 @@
         function sortItems(items){
           items.sort(function(a,b){
             if(a.info.rank!==b.info.rank)return a.info.rank-b.info.rank;
-            if(a.info.original!==b.info.original){if(a.info.original==='global')return-1;if(b.info.original==='global')return 1;}
+            if(a.info.original!==b.info.original){
+              var priority={global:0,local:1,radius:2};
+              var pa=priority[a.info.original]===undefined?9:priority[a.info.original];
+              var pb=priority[b.info.original]===undefined?9:priority[b.info.original];
+              if(pa!==pb)return pa-pb;
+            }
             if(isFinite(a.info.distance)&&isFinite(b.info.distance)&&a.info.distance!==b.info.distance)return a.info.distance-b.info.distance;
             return cleanText(a.place.name).localeCompare(cleanText(b.place.name),'vi');
           });
@@ -2189,7 +2229,13 @@
           var title=document.createElement('strong');title.className='tl-home-top-title';title.textContent=cleanText(p.name)||'Địa điểm';
           var address=document.createElement('span');address.className='tl-home-top-address';address.textContent=cleanText(p.address)||[cleanText(p.locality),cleanText(p.province)].filter(Boolean).join(', ')||'Xem thông tin địa điểm';
           var meta=document.createElement('div');meta.className='tl-home-top-meta';
-          if(info.inherited){var ih=document.createElement('span');ih.className='is-inherited';ih.textContent=info.group==='local'?'TOP THIS LOCAL tại khu vực này':'TOP THIS LOCAL quanh bạn';meta.appendChild(ih);}
+          if(info.inherited){
+            var ih=document.createElement('span');ih.className='is-inherited';
+            if(info.group==='local')ih.textContent='TOP THIS LOCAL tại khu vực này';
+            else if(info.original==='global')ih.textContent='TOP THIS LOCAL trong '+Math.round(Number(info.radius)||GUIDE_RADIUS_KM)+' km';
+            else ih.textContent='TOP khu vực trong '+Math.round(Number(info.radius)||GUIDE_RADIUS_KM)+' km';
+            meta.appendChild(ih);
+          }
           if(isFinite(info.distance)){var ds=document.createElement('span');ds.textContent='Cách '+distanceLabel(info.distance);meta.appendChild(ds);}
           if(String(p.verified||'').toUpperCase()==='TRUE'){var vr=document.createElement('span');vr.className='is-verified';vr.textContent='Đã xác minh';meta.appendChild(vr);}
           if(truthy(p.is_trusted)){var tr=document.createElement('span');tr.className='is-trusted';tr.textContent='Uy tín';meta.appendChild(tr);}
@@ -2198,8 +2244,8 @@
           card.addEventListener('click',function(){openPlaceSearchResult(p);});
           return card;
         }
-        function makeGroup(kind,title,subtitle,items){
-          if(!items.length)return null;
+        function makeGroup(kind,title,subtitle,items,emptyText){
+          if(!items.length&&!emptyText)return null;
           var wrap=document.createElement('section');wrap.className='tl-home-top-group is-'+kind;
           var hd=document.createElement('div');hd.className='tl-home-top-group-head';
           var copy=document.createElement('div');
@@ -2207,7 +2253,10 @@
           if(subtitle){var sub=document.createElement('p');sub.textContent=subtitle;copy.appendChild(sub);}
           var count=document.createElement('span');count.className='tl-home-top-group-count';count.textContent=items.length+' địa điểm';
           hd.appendChild(copy);hd.appendChild(count);wrap.appendChild(hd);
-          var grid=document.createElement('div');grid.className='tl-home-top-grid';items.forEach(function(item){grid.appendChild(makeCard(item));});wrap.appendChild(grid);
+          var grid=document.createElement('div');grid.className='tl-home-top-grid';
+          if(items.length)items.forEach(function(item){grid.appendChild(makeCard(item));});
+          else {var empty=document.createElement('div');empty.className='tl-home-top-status';empty.textContent=emptyText||'Chưa có địa điểm TOP phù hợp.';grid.appendChild(empty);}
+          wrap.appendChild(grid);
           return wrap;
         }
         function render(loc){
@@ -2220,8 +2269,20 @@
             note.textContent=loc?('TOP THIS LOCAL luôn hiển thị'+(area?' và được kế thừa vào TOP '+area+' khi địa điểm thuộc khu vực này.':' và được kế thừa vào các phạm vi vị trí phù hợp.')+' TOP bán kính chỉ hiện khi có bán kính TOP được cấu hình và bạn đang ở trong bán kính đó.'):'TOP THIS LOCAL luôn hiển thị. Bật vị trí để xem TOP khu vực và TOP bán kính; TOP THIS LOCAL phù hợp cũng sẽ xuất hiện lại trong các nhóm đó.';
           }
           var g1=makeGroup('global','TOP THIS LOCAL','Những địa điểm TOP trên toàn hệ thống.',buckets.global);if(g1)groups.appendChild(g1);
-          var g2=makeGroup('local',area?('TOP khu vực '+area):'TOP khu vực của bạn',area?'Bao gồm TOP khu vực và TOP THIS LOCAL nằm tại khu vực này.':'Bật vị trí để xác định khu vực.',buckets.local);if(g2)groups.appendChild(g2);
-          var g3=makeGroup('radius','TOP quanh bạn','Bao gồm TOP bán kính và TOP THIS LOCAL có bán kính TOP phù hợp với vị trí hiện tại.',buckets.radius);if(g3)groups.appendChild(g3);
+          var g2=makeGroup(
+            'local',
+            area?('TOP khu vực '+area):'TOP khu vực của bạn',
+            area?'Bao gồm TOP khu vực và TOP THIS LOCAL nằm tại khu vực này.':'Bật vị trí để xác định khu vực.',
+            buckets.local,
+            loc?'Chưa có địa điểm TOP phù hợp với khu vực hiện tại.':'Bật vị trí để xem TOP khu vực.'
+          );if(g2)groups.appendChild(g2);
+          var g3=makeGroup(
+            'radius',
+            'TOP quanh bạn',
+            'TOP THIS LOCAL và TOP khu vực trong '+GUIDE_RADIUS_KM+' km quanh bạn; TOP bán kính riêng vẫn dùng số km do quản trị viên đặt.',
+            buckets.radius,
+            loc?'Chưa có địa điểm TOP có tọa độ phù hợp trong phạm vi quanh bạn.':'Bật vị trí để xem TOP quanh bạn.'
+          );if(g3)groups.appendChild(g3);
           if(!groups.childNodes.length){var empty=document.createElement('div');empty.className='tl-home-top-status';empty.textContent='Hiện chưa có địa điểm TOP phù hợp.';groups.appendChild(empty);}
         }
         function load(){
