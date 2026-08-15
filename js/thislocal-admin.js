@@ -1,4 +1,4 @@
-/* THIS LOCAL admin runtime extracted from V17.62. */
+/* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
 (function(){
   var pth=(location.pathname||'').toLowerCase();
   if(!/^\/p\/(?:quan-tri|quan-tri-this-local|this-local-admin|admin)\.html\/?$/.test(pth))return;
@@ -69,7 +69,12 @@
     function n(v){return clean(v).toLowerCase().normalize?clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d'):clean(v).toLowerCase().replace(/đ/g,'d')}
     function accept(part){var s=n(part).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');if(!s)return;if(s.indexOf('this_local')>-1||s.indexOf('thislocal')>-1||s.indexOf('global')>-1||s.indexOf('toan_data')>-1){out.THIS_LOCAL=true;return}if(s.indexOf('radius')>-1||s.indexOf('ban_kinh')>-1||s.indexOf('khoang_cach')>-1||s.indexOf('distance')>-1){out.RADIUS=true;return}if(s==='local'||s.indexOf('locality')>-1||s.indexOf('dia_phuong')>-1||s.indexOf('khu_vuc')>-1||s.indexOf('province')>-1||s==='tinh'||s.indexOf('tinh_thanh')>-1){out.LOCALITY=true;return}out.LOCALITY=true}
     if(raw)raw.split(/[,;|+]+/).forEach(accept);
-    if(!out.THIS_LOCAL&&!out.LOCALITY&&!out.RADIUS&&base&&clean(base.top_rank)){if(Number(base.top_radius_km)>0)out.RADIUS=true;else if(clean(base.top_locality))out.LOCALITY=true;else out.THIS_LOCAL=true}
+    /* V17.65: top_locality và top_radius_km là cờ phạm vi phụ để không phải lưu chuỗi scope ghép. */
+    if(base&&clean(base.top_rank)){
+      if(clean(base.top_locality))out.LOCALITY=true;
+      if(Number(base.top_radius_km)>0)out.RADIUS=true;
+      if(!out.THIS_LOCAL&&!out.LOCALITY&&!out.RADIUS)out.THIS_LOCAL=true;
+    }
     return out;
   }
   function topScopePicker(value,base){
@@ -88,7 +93,12 @@
       if(!isFinite(r)||r<=0)throw new Error('TOP bán kính cần nhập Bán kính TOP (km) lớn hơn 0.');
       if(!isFinite(lat)||!isFinite(lng)||lat<-90||lat>90||lng<-180||lng>180)throw new Error('TOP bán kính cần tọa độ Vĩ độ/Kinh độ hợp lệ của địa điểm.');
     }
-    data.top_scope=scopes.join(',');return data;
+    /* Không lưu THIS_LOCAL,LOCALITY,RADIUS chung một chuỗi nữa.
+       Scope rộng nhất được lưu ở top_scope; phạm vi phụ được biểu diễn bằng top_locality/top_radius_km. */
+    data.top_scope=scopes.indexOf('THIS_LOCAL')>-1?'THIS_LOCAL':(scopes.indexOf('LOCALITY')>-1?'LOCALITY':'RADIUS');
+    if(scopes.indexOf('LOCALITY')<0)data.top_locality='';
+    if(scopes.indexOf('RADIUS')<0)data.top_radius_km=null;
+    return data;
   }
   function collect(rootNode,base){
     var o=Object.assign({},base||{});
