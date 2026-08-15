@@ -1207,7 +1207,7 @@
       var googleMapStatus=el('div','vlc-field-help','');googleMapField.appendChild(googleMapStatus);
       var appleMapStatus=el('div','vlc-field-help','');appleMapField.appendChild(appleMapStatus);
       mapsGrid.appendChild(googleMapField);mapsGrid.appendChild(appleMapField);
-      var mapsHelp=el('div','vlc-field-help','Cách lấy link: mở Google Maps hoặc Apple Maps → chọn đúng địa điểm → Chia sẻ → Sao chép đường liên kết → dán vào đúng ô tương ứng. Hệ thống sẽ thử tự lấy Vĩ độ/Kinh độ từ link. Nếu dán nhầm loại link, hệ thống sẽ báo lại.');
+      var mapsHelp=el('div','vlc-field-help','Cách lấy link: mở Google Maps hoặc Apple Maps → chọn đúng địa điểm → Chia sẻ → Sao chép đường liên kết → dán vào đúng ô tương ứng. Hệ thống hỗ trợ cả link chia sẻ rút gọn và link đầy đủ dạng /maps/place/...; một số link đầy đủ cần vài giây để đọc vị trí. Nếu dán nhầm Google/Apple, hệ thống sẽ báo lại.');
       mapsHelp.style.gridColumn='1 / -1';mapsGrid.appendChild(mapsHelp);
       form.appendChild(mapsGrid);
 
@@ -1300,7 +1300,7 @@
         if(direct){applyMapCoordinates(direct,kind);status.textContent='Đã lấy Vĩ độ/Kinh độ từ '+(kind==='google'?'Google Maps.':'Apple Maps.');return;}
         if(!VLC_API_URL||VLC_API_URL.indexOf('DAN_URL_')===0){status.textContent='Link hợp lệ nhưng chưa tự đọc được tọa độ. Bạn vẫn có thể gửi đề xuất.';return;}
         status.textContent='Đang đọc vị trí từ link '+(kind==='google'?'Google Maps...':'Apple Maps...');
-        jsonp(VLC_API_URL+'?action=resolveMapUrl&kind='+encodeURIComponent(kind)+'&url='+encodeURIComponent(inp.value),function(e,data){
+        jsonp(VLC_API_URL+'?action=resolveMapUrl&kind='+encodeURIComponent(kind)+'&url='+encodeURIComponent(inp.value)+'&_v=17.74',function(e,data){
           if(e||!data||!data.ok){status.textContent='Không đọc được tọa độ từ link này. Hãy kiểm tra lại link hoặc để trống tọa độ.';return;}
           if(data.resolved_url&&mapLinkKind(data.resolved_url)===kind&&inp.dataset.tlAutoMap!=='1')inp.value=data.resolved_url;
           if(data.lat!==null&&data.lng!==null&&isFinite(Number(data.lat))&&isFinite(Number(data.lng))){applyMapCoordinates({lat:Number(data.lat),lng:Number(data.lng)},kind);status.textContent='Đã lấy Vĩ độ/Kinh độ từ '+(kind==='google'?'Google Maps.':'Apple Maps.');}
@@ -1308,10 +1308,25 @@
         });
       }
 
-      googleMapInput.addEventListener('input',function(){googleMapInput.dataset.tlAutoMap='0';googleMapInput.classList.remove('is-invalid');googleMapError.classList.remove('is-show');googleMapStatus.textContent='';});
-      appleMapInput.addEventListener('input',function(){appleMapInput.dataset.tlAutoMap='0';appleMapInput.classList.remove('is-invalid');appleMapError.classList.remove('is-show');appleMapStatus.textContent='';});
-      googleMapInput.addEventListener('blur',function(){resolveMapField(googleMapInput,'google',googleMapError,googleMapStatus);});
-      appleMapInput.addEventListener('blur',function(){resolveMapField(appleMapInput,'apple',appleMapError,appleMapStatus);});
+      function bindMapAutoResolver(inp,kind,err,status){
+        var timer=0,lastValue='';
+        inp.addEventListener('input',function(){
+          inp.dataset.tlAutoMap='0';inp.classList.remove('is-invalid');err.classList.remove('is-show');status.textContent='';
+          lastValue='';
+        });
+        function schedule(delay){
+          clearTimeout(timer);
+          timer=setTimeout(function(){
+            var value=safe(inp.value);if(!value||value===lastValue)return;
+            lastValue=value;resolveMapField(inp,kind,err,status);
+          },delay||80);
+        }
+        inp.addEventListener('paste',function(){schedule(120);});
+        inp.addEventListener('change',function(){schedule(20);});
+        inp.addEventListener('blur',function(){schedule(20);});
+      }
+      bindMapAutoResolver(googleMapInput,'google',googleMapError,googleMapStatus);
+      bindMapAutoResolver(appleMapInput,'apple',appleMapError,appleMapStatus);
 
       var websiteField=inputField('Website','business_url',place&&place.business_url,false,'text');
       websiteField.querySelector('input').placeholder='Ví dụ: thislocal.vn';
