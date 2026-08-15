@@ -1,4 +1,4 @@
-/* THIS LOCAL PUBLIC V17.90 - child category picker for parent category tabs */
+/* THIS LOCAL PUBLIC V17.91 - fixed all-child button beside scrollable category tabs */
 /* THIS LOCAL PUBLIC V17.72 - DMS proposal coordinates + mobile GPS placement */
 /* THIS LOCAL PUBLIC V17.66 - radius independent + diagnostic */
 /* THIS LOCAL public runtime extracted from V17.55. */
@@ -4048,8 +4048,24 @@
     if(e.locationBtn&&!e.locationBtn.disabled)e.locationBtn.textContent=tr('updateLocation');
     if(e.input){var modeSelect=e.hub.querySelector('.tl-search-mode-select');e.input.placeholder=(modeSelect&&modeSelect.value==='place')?'Tìm tên địa điểm bạn quan tâm':'Tìm danh mục, chủ đề, các dịch vụ, ...';}
   }
+  function ensureChipRow(){
+    var e=els();if(!e.chips)return null;
+    var row=e.chips.parentNode;
+    if(row&&row.classList&&row.classList.contains('tl-hub-chips-row')){
+      row.__tlMoreSlot=row.querySelector('.tl-hub-more-slot');
+      return row;
+    }
+    var parent=e.chips.parentNode;if(!parent)return null;
+    row=document.createElement('div');row.className='tl-hub-chips-row';
+    parent.insertBefore(row,e.chips);row.appendChild(e.chips);
+    var slot=document.createElement('div');slot.className='tl-hub-more-slot';row.appendChild(slot);
+    row.__tlMoreSlot=slot;
+    return row;
+  }
+
   function ensureChildPicker(){
     var e=els();if(!e.hub||!e.chips)return null;
+    var row=ensureChipRow();if(!row)return null;
     var panel=e.hub.querySelector('.tl-hub-child-picker');
     if(panel)return panel;
 
@@ -4068,7 +4084,7 @@
     var empty=document.createElement('div');empty.className='tl-hub-child-picker-empty';empty.hidden=true;empty.textContent=tr('noPlace');
 
     panel.appendChild(head);panel.appendChild(searchWrap);panel.appendChild(grid);panel.appendChild(empty);
-    e.chips.parentNode.insertBefore(panel,e.chips.nextSibling);
+    row.parentNode.insertBefore(panel,row.nextSibling);
 
     function filterPicker(){
       var q=norm(search.value),visible=0;
@@ -4110,7 +4126,9 @@
   }
 
   function renderChips(){
-    var e=els();if(!e.chips)return;syncProposalContext();e.chips.innerHTML='';
+    var e=els();if(!e.chips)return;syncProposalContext();
+    var chipRow=ensureChipRow(),moreSlot=chipRow&&chipRow.__tlMoreSlot;
+    e.chips.innerHTML='';if(moreSlot)moreSlot.innerHTML='';
     var all=document.createElement('button');all.type='button';
     all.className='tl-category-hub-chip'+(!state.active?' is-active':'');
     all.textContent=tr('all');
@@ -4139,13 +4157,14 @@
       e.chips.appendChild(b);
     });
 
-    if(state.broad&&ranked.length>MAX_SUGGEST){
+    if(state.broad&&ranked.length){
       var more=document.createElement('button');more.type='button';
       more.className='tl-category-hub-chip tl-category-hub-more'+(state.pickerOpen?' is-open':'');
       more.setAttribute('aria-expanded',state.pickerOpen?'true':'false');
+      more.setAttribute('aria-label',tr('allChildren')+' ('+ranked.length+')');
       more.textContent=tr('allChildren')+' ('+ranked.length+') '+(state.pickerOpen?'▴':'▾');
       more.addEventListener('click',function(){state.pickerOpen=!state.pickerOpen;renderChips();if(state.pickerOpen){var p=ensureChildPicker();if(p&&p.__tlSearch)setTimeout(function(){try{p.__tlSearch.focus();}catch(e){}},0);}});
-      e.chips.appendChild(more);
+      (moreSlot||e.chips).appendChild(more);
     }else state.pickerOpen=false;
 
     renderChildPicker();
