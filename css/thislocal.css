@@ -1,5 +1,9 @@
-/* THIS LOCAL external CSS extracted from V17.58 by VInh Béo. Keep file order unchanged. */
+/* THIS LOCAL external CSS extracted from V17.55. Keep file order unchanged. */
 
+/* THIS LOCAL V17.52 - HORIZONTAL OVERFLOW FIX
+   Header full-width không dùng 100vw; engine host không đẩy ra -100000px. */
+/* THIS LOCAL V14.2 - SMART PLACE SEARCH
+   Chỉ giữ CSS cần cho Blog1 + Local Guide + giao diện This Local. */
 :root{
   --tl-bg:#f5f7f3;--tl-card:#fff;--tl-soft:#eef4ef;--tl-text:#17221c;--tl-muted:#66736b;
   --tl-line:#dde5df;--tl-green:#176b4b;--tl-green2:#0e5138;--tl-green3:#2d8b63;
@@ -1712,19 +1716,33 @@ body.tl-allcats-page .post-body>.tl-allcats-v24{margin-top:0}
 @media(max-width:1000px){.tl-home-top-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.tl-home-top-places{padding:18px 8px 6px}.tl-home-top-heading h3{font-size:25px}.tl-home-top-grid{display:flex;gap:9px;overflow-x:auto;padding:1px 1px 9px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tl-home-top-grid::-webkit-scrollbar{display:none}.tl-home-top-card{flex:0 0 min(82vw,320px);scroll-snap-align:start}.tl-home-top-status{flex:1 0 100%}}
 
-/* THIS LOCAL V17.58 - TOP THIS LOCAL ke thua xuong TOP khu vuc / ban kinh */
-.tl-home-top-groups{display:grid;gap:18px}
-.tl-home-top-group{display:grid;gap:10px}
-.tl-home-top-group-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:0 2px}
-.tl-home-top-group-head h4{margin:0;color:var(--tl-text)!important;font-size:19px;line-height:1.15;font-weight:950;letter-spacing:-.025em}
-.tl-home-top-group-head p{margin:4px 0 0;color:var(--tl-muted)!important;font-size:11px;line-height:1.45}
-.tl-home-top-group-count{flex:0 0 auto;padding:5px 8px;border-radius:999px;background:#edf4ef;color:#3d5e4d;font-size:9.5px;font-weight:900;white-space:nowrap}
-.tl-home-top-group.is-local .tl-home-top-group-count{background:#e8f3ed;color:#176b4b}
-.tl-home-top-group.is-radius .tl-home-top-group-count{background:#fff0e8;color:#b84d1f}
-.tl-home-top-meta .is-inherited{background:#e8eef9;color:#294f82}
-@media(max-width:760px){
-  .tl-home-top-groups{gap:15px}
-  .tl-home-top-group-head{align-items:flex-start}
-  .tl-home-top-group-head h4{font-size:17px}
-  .tl-home-top-group-head p{font-size:10px}
+
+/* THIS LOCAL V17.90 - ALL CHILD CATEGORY PICKER */
+.tl-category-hub-more{border-color:#b8d6c7!important;background:#edf7f2!important;color:var(--tl-green)!important}
+.tl-category-hub-more:hover,.tl-category-hub-more.is-open{background:var(--tl-green)!important;border-color:var(--tl-green)!important;color:#fff!important}
+.tl-hub-child-picker{
+  margin:2px 0 14px;padding:14px;border:1px solid #cfe1d7;border-radius:18px;
+  background:linear-gradient(180deg,#fbfefc,#f3f8f5);box-shadow:0 12px 28px rgba(17,77,52,.08)
+}
+.tl-hub-child-picker[hidden]{display:none!important}
+.tl-hub-child-picker-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.tl-hub-child-picker-title{color:var(--tl-text);font-size:14px;font-weight:950}
+.tl-hub-child-picker-close{min-height:32px;padding:6px 10px;border:1px solid var(--tl-line);border-radius:999px;background:#fff;color:#53615a;font:850 11px/1 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;cursor:pointer}
+.tl-hub-child-picker-search-wrap{margin-bottom:11px}
+.tl-hub-child-picker-search{width:100%;height:42px;padding:0 13px;border:1px solid #bfd5c8;border-radius:12px;background:#fff;color:var(--tl-text);font:700 13px/1.2 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;outline:none}
+.tl-hub-child-picker-search:focus{border-color:var(--tl-green);box-shadow:0 0 0 3px rgba(31,109,85,.11)}
+.tl-hub-child-picker-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:360px;overflow:auto;padding:1px}
+.tl-hub-child-option{min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 11px;border:1px solid var(--tl-line);border-radius:12px;background:#fff;color:#33443c;text-align:left;cursor:pointer}
+.tl-hub-child-option:hover{border-color:#b5d2c2;background:#f8fcfa}
+.tl-hub-child-option.is-active{border-color:var(--tl-green);background:#e8f5ef;color:var(--tl-green)}
+.tl-hub-child-option-name{min-width:0;font:850 12px/1.35 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;overflow-wrap:anywhere}
+.tl-hub-child-option-count{flex:0 0 auto;color:var(--tl-muted);font:750 10px/1.2 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;white-space:nowrap}
+.tl-hub-child-option.is-active .tl-hub-child-option-count{color:var(--tl-green)}
+.tl-hub-child-picker-empty{padding:12px;text-align:center;color:var(--tl-muted);font-size:12px;font-weight:700}
+@media(max-width:820px){.tl-hub-child-picker-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){
+  .tl-hub-child-picker{margin:1px 0 12px;padding:11px;border-radius:15px}
+  .tl-hub-child-picker-grid{grid-template-columns:1fr;max-height:52vh;gap:7px}
+  .tl-hub-child-option{min-height:44px;padding:10px}
+  .tl-hub-child-picker-search{height:44px;font-size:14px}
 }
