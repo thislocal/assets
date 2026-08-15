@@ -1,4 +1,4 @@
-/* THIS LOCAL ADMIN V17.76 - safe suggestion review: APPROVED confirmation + create/update target selection */
+/* THIS LOCAL ADMIN V17.77 - safe suggestion review: APPROVED confirmation + create/update target selection */
 /* THIS LOCAL ADMIN V17.72 - DMS/decimal coordinate normalization */
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
 /* THIS LOCAL ADMIN V17.71: accept decimal and DMS coordinates; normalize to decimal before saving. */
@@ -340,6 +340,7 @@
       flags.appendChild(approvedLab);
       form.appendChild(flags);
       form.appendChild(node('div','tla-note','Tick APPROVED trước khi bấm “Duyệt & lưu”. Đây là bước xác nhận cuối để đưa dữ liệu đã duyệt vào Places.'));
+      form.appendChild(node('div','tla-note','V17.77: chỉ báo duyệt thành công khi địa điểm gốc đã trả về dữ liệu mới và đề xuất đã thực sự chuyển từ PENDING sang APPROVED.'));
 
       form.appendChild(node('div','tla-section-title','Cách xử lý đề xuất'));
       var reviewBox=node('div','tla-note');
@@ -503,7 +504,7 @@
             fp.approval_status='APPROVED';
             fp.verified=fp.verified?'TRUE':'FALSE';
 
-            await api('',{
+            var reviewResult=await api('',{
               method:'POST',
               body:JSON.stringify({
                 action:'reviewSuggestion',
@@ -516,7 +517,19 @@
                 admin_note:note.input.value
               })
             });
-            suggestions(document.getElementById('tlaContent'));
+
+            if(!reviewResult||reviewResult.status!=='APPROVED'||reviewResult.verified_update!==true){
+              throw new Error('Admin API chưa xác nhận được UPDATE + APPROVED. Hãy chắc chắn đã deploy this-local-admin-api V17.77.');
+            }
+            if(reviewMode==='update'&&clean(reviewResult.place_id)!==targetPlaceId){
+              throw new Error('ID địa điểm được cập nhật không khớp ID đã chọn. Dừng để tránh sửa nhầm dữ liệu.');
+            }
+            if(reviewMode==='update'&&fp.address&&reviewResult.place&&clean(reviewResult.place.address)!==clean(fp.address)){
+              throw new Error('Địa chỉ mới chưa được ghi vào địa điểm gốc. Không chuyển đề xuất sang đã duyệt.');
+            }
+
+            state.suggestions.active='';
+            await suggestions(document.getElementById('tlaContent'));
           }catch(e){
             errBox(detail,e.message||String(e));
           }finally{
@@ -528,8 +541,10 @@
           if(!confirm('Từ chối đề xuất này?'))return;
           try{
             yes.disabled=no.disabled=true;
-            await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});
-            suggestions(document.getElementById('tlaContent'));
+            var rejectResult=await api('',{method:'POST',body:JSON.stringify({action:'reviewSuggestion',id:s.id,decision:'reject',admin_note:note.input.value})});
+            if(!rejectResult||rejectResult.status!=='REJECTED')throw new Error('Không xác nhận được trạng thái REJECTED.');
+            state.suggestions.active='';
+            await suggestions(document.getElementById('tlaContent'));
           }catch(e){
             errBox(detail,e.message||String(e));
           }finally{
