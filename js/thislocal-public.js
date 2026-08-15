@@ -729,20 +729,29 @@
         return msg;
       }
 
-      function normalizeVNPhone(value){
-        var digits=String(value||'').replace(/\D/g,'');
-        if(digits.length===11 && digits.indexOf('84')===0){
-          digits='0'+digits.slice(2);
-        }
-        if(digits.length===10 && digits.charAt(0)==='0')return digits;
-        return '';
-      }
+      /* V17.75: số điện thoại dùng quy tắc linh hoạt theo nhiều quốc gia.
+         Không ép mẫu di động Việt Nam; chấp nhận di động, bàn, hotline,
+         số quốc tế, ký hiệu quay số thông dụng và máy lẻ. */
+      function normalizeFlexiblePhone(value){
+        var raw=String(value||'').trim().replace(/\s+/g,' ');
+        if(!raw||raw.length>40)return '';
 
-      function formatVNPhone(digits){
-        digits=String(digits||'').replace(/\D/g,'').slice(0,10);
-        if(digits.length<=4)return digits;
-        if(digits.length<=7)return digits.slice(0,4)+' '+digits.slice(4);
-        return digits.slice(0,4)+' '+digits.slice(4,7)+' '+digits.slice(7,10);
+        /* Cho phép máy lẻ ở cuối: ext 105 / ext. 105 / x105 / #105. */
+        var main=raw.replace(/\s*(?:(?:ext(?:ension)?\.?|x)\s*\d+|#\s*\d+)\s*$/i,'').trim();
+        if(!main)return '';
+
+        /* Phần số chính chỉ chứa ký tự quay số thông dụng. */
+        if(!/^[0-9+().\-\/\s*#]+$/.test(main))return '';
+
+        /* Dấu + chỉ được xuất hiện tối đa 1 lần và phải đứng đầu. */
+        var plusCount=(main.match(/\+/g)||[]).length;
+        if(plusCount>1||(plusCount===1&&main.charAt(0)!=='+'))return '';
+
+        var digits=main.replace(/\D/g,'');
+        /* 3 chữ số vẫn cần thiết cho hotline/ngắn; không ép độ dài từng quốc gia. */
+        if(digits.length<3||digits.length>20)return '';
+
+        return raw;
       }
 
       function digitsOnly(value){
@@ -1101,18 +1110,18 @@
       var phoneInput=phoneField.querySelector('input');
       phoneInput.inputMode='tel';
       phoneInput.autocomplete='tel';
-      phoneInput.placeholder='0986 123 456';
-      var existingPhone=normalizeVNPhone(place&&place.phone);
-      phoneInput.value=existingPhone?formatVNPhone(existingPhone):(place&&place.phone||'');
-      addHelp(phoneField,'Bắt buộc. Có thể nhập liền, có khoảng trắng, dấu chấm, dấu gạch hoặc +84.');
-      var phoneError=addError(phoneField,'Số điện thoại là bắt buộc và phải hợp lệ, ví dụ 0986 123 456.');
+      phoneInput.placeholder='VD: 024 3822 8898 · 1900 1234 · +1 212 555 0123';
+      var existingPhone=normalizeFlexiblePhone(place&&place.phone);
+      phoneInput.value=existingPhone||(place&&place.phone||'');
+      addHelp(phoneField,'Bắt buộc. Chấp nhận số di động, điện thoại bàn, hotline và số quốc tế. Có thể dùng +, khoảng trắng, dấu chấm, gạch ngang, ngoặc hoặc máy lẻ (ext/x).');
+      var phoneError=addError(phoneField,'Hãy nhập số điện thoại hợp lệ. THIS LOCAL không ép theo mẫu di động của riêng một quốc gia.');
       grid.appendChild(phoneField);
       form.appendChild(grid);
 
       var hiddenPhone=el('input','');
       hiddenPhone.type='hidden';
       hiddenPhone.name='phone';
-      hiddenPhone.value=existingPhone?formatVNPhone(existingPhone):'';
+      hiddenPhone.value=existingPhone||'';
       form.appendChild(hiddenPhone);
 
       var addressField=inputField('Địa chỉ','address',place&&place.address,true);
@@ -1300,7 +1309,7 @@
         if(direct){applyMapCoordinates(direct,kind);status.textContent='Đã lấy Vĩ độ/Kinh độ từ '+(kind==='google'?'Google Maps.':'Apple Maps.');return;}
         if(!VLC_API_URL||VLC_API_URL.indexOf('DAN_URL_')===0){status.textContent='Link hợp lệ nhưng chưa tự đọc được tọa độ. Bạn vẫn có thể gửi đề xuất.';return;}
         status.textContent='Đang đọc vị trí từ link '+(kind==='google'?'Google Maps...':'Apple Maps...');
-        jsonp(VLC_API_URL+'?action=resolveMapUrl&kind='+encodeURIComponent(kind)+'&url='+encodeURIComponent(inp.value)+'&_v=17.74',function(e,data){
+        jsonp(VLC_API_URL+'?action=resolveMapUrl&kind='+encodeURIComponent(kind)+'&url='+encodeURIComponent(inp.value)+'&_v=17.75',function(e,data){
           if(e||!data||!data.ok){status.textContent='Không đọc được tọa độ từ link này. Hãy kiểm tra lại link hoặc để trống tọa độ.';return;}
           if(data.resolved_url&&mapLinkKind(data.resolved_url)===kind&&inp.dataset.tlAutoMap!=='1')inp.value=data.resolved_url;
           if(data.lat!==null&&data.lng!==null&&isFinite(Number(data.lat))&&isFinite(Number(data.lng))){applyMapCoordinates({lat:Number(data.lat),lng:Number(data.lng)},kind);status.textContent='Đã lấy Vĩ độ/Kinh độ từ '+(kind==='google'?'Google Maps.':'Apple Maps.');}
@@ -1421,19 +1430,9 @@
       syncMapLinksFromCoords();
 
       phoneInput.addEventListener('input',function(){
+        /* Không tự format theo Việt Nam vì mỗi quốc gia/hotline có cấu trúc khác nhau. */
         phoneInput.classList.remove('is-invalid');
         phoneError.classList.remove('is-show');
-
-        var digits=digitsOnly(phoneInput.value);
-
-        /* Nếu người dùng bắt đầu bằng +84/84 thì vẫn cho nhập tự nhiên. */
-        if(digits.indexOf('84')===0 && digits.length<=11){
-          return;
-        }
-
-        if(digits.length<=10){
-          phoneInput.value=formatVNPhone(digits);
-        }
       });
 
       [minPriceInput,maxPriceInput].forEach(function(inp){
@@ -1484,7 +1483,7 @@
         }
 
         var rawPhone=phoneInput.value.trim();
-        var normalizedPhone=rawPhone?normalizeVNPhone(rawPhone):'';
+        var normalizedPhone=rawPhone?normalizeFlexiblePhone(rawPhone):'';
 
         if(!rawPhone || !normalizedPhone){
           phoneInput.classList.add('is-invalid');
@@ -1493,12 +1492,9 @@
           return false;
         }
 
-        if(normalizedPhone){
-          phoneInput.value=formatVNPhone(normalizedPhone);
-          hiddenPhone.value=formatVNPhone(normalizedPhone);
-        }else{
-          hiddenPhone.value='';
-        }
+        /* Giữ nguyên cách người dùng nhập thay vì ép về một định dạng quốc gia. */
+        phoneInput.value=normalizedPhone;
+        hiddenPhone.value=normalizedPhone;
 
         var latRaw=safe(latInp.value),lngRaw=safe(lngInp.value);
         var latNum=latRaw?parseProposalCoordinate(latRaw,'lat'):null,lngNum=lngRaw?parseProposalCoordinate(lngRaw,'lng'):null;
