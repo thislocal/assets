@@ -1,5 +1,5 @@
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
-/* THIS LOCAL ADMIN V17.67: strict TOP radius coordinate validation. */
+/* THIS LOCAL ADMIN V17.71: accept decimal and DMS coordinates; normalize to decimal before saving. */
 (function(){
   var pth=(location.pathname||'').toLowerCase();
   if(!/^\/p\/(?:quan-tri|quan-tri-this-local|this-local-admin|admin)\.html\/?$/.test(pth))return;
@@ -65,6 +65,44 @@
     i.setAttribute('data-field',name);w.appendChild(l);w.appendChild(i);return{wrap:w,input:i}
   }
   function checked(v){return v===true||String(v).toLowerCase()==='true'||String(v)==='1'||String(v).toUpperCase()==='TRUE'}
+  function parseCoordinate(value,axis){
+    var raw=clean(value);if(!raw)return null;
+    var s=raw.toUpperCase()
+      .replace(/º/g,'°')
+      .replace(/[′’]/g,"'")
+      .replace(/[″“”]/g,'"')
+      .replace(/,/g,'.')
+      .trim();
+    var dm=s.match(/([NSEW])\s*$/),dir=dm?dm[1]:'';
+    if(dir)s=s.replace(/([NSEW])\s*$/,'').trim();
+    if(axis==='lat'&&dir&&dir!=='N'&&dir!=='S')return NaN;
+    if(axis==='lng'&&dir&&dir!=='E'&&dir!=='W')return NaN;
+    var n;
+    if(!/[°'\"]/.test(s)&&/^[-+]?\d+(?:\.\d+)?$/.test(s)){
+      n=Number(s);
+    }else{
+      var m=s.match(/^([-+]?\d+(?:\.\d+)?)\s*°\s*(\d+(?:\.\d+)?)?\s*'?\s*(\d+(?:\.\d+)?)?\s*\"?\s*$/);
+      if(!m)return NaN;
+      var deg=Number(m[1]),min=m[2]==null||m[2]===''?0:Number(m[2]),sec=m[3]==null||m[3]===''?0:Number(m[3]);
+      if(!isFinite(deg)||!isFinite(min)||!isFinite(sec)||min<0||min>=60||sec<0||sec>=60)return NaN;
+      var sign=deg<0?-1:1;
+      n=(Math.abs(deg)+(min/60)+(sec/3600))*sign;
+    }
+    if(dir)n=Math.abs(n)*((dir==='S'||dir==='W')?-1:1);
+    var minRange=axis==='lat'?-90:-180,maxRange=axis==='lat'?90:180;
+    if(!isFinite(n)||n<minRange||n>maxRange)return NaN;
+    return n;
+  }
+  function normalizeCoordinateFields(data){
+    [['lat','lat','Vĩ độ','22.483833 hoặc 22°29\'01.8"N'],['lng','lng','Kinh độ','103.972194 hoặc 103°58\'19.9"E']].forEach(function(x){
+      if(!(x[0] in data))return;
+      var raw=clean(data[x[0]]);if(!raw){data[x[0]]='';return;}
+      var n=parseCoordinate(raw,x[1]);
+      if(!isFinite(n))throw new Error(x[2]+' không hợp lệ. Có thể nhập dạng thập phân hoặc dạng độ-phút-giây, ví dụ '+x[3]+'.');
+      data[x[0]]=Number(n.toFixed(6));
+    });
+    return data;
+  }
   function topScopeState(value,base){
     var raw=clean(value),out={THIS_LOCAL:false,LOCALITY:false,RADIUS:false};
     function n(v){return clean(v).toLowerCase().normalize?clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d'):clean(v).toLowerCase().replace(/đ/g,'d')}
@@ -108,6 +146,7 @@
     rootNode.querySelectorAll('[data-field]').forEach(function(i){
       var k=i.getAttribute('data-field');if(i.type==='checkbox')o[k]=i.checked;else o[k]=i.value;
     });
+    normalizeCoordinateFields(o);
     if(o.business_url)o.business_url=normUrl(o.business_url);
     if(o.map_url)o.map_url=normUrl(o.map_url);
     if(o.source_url)o.source_url=normUrl(o.source_url);
@@ -184,7 +223,7 @@
     var form=node('div',''),grid=node('div','tla-grid');
     function add(label,name,type,wide){var f=field(label,name,p[name],type,wide);grid.appendChild(f.wrap);return f.input}
     var category=field('Category','category_id','', 'select');categoryOptions(category.input,p.category_id||'');category.input.onchange=function(){var c=byId()[category.input.value];if(c){form.querySelector('[data-field="category"]').value=c.name_vi;form.querySelector('[data-field="parent_category"]').value=parentName(c.id)}};grid.appendChild(category.wrap);
-    add('Tên Category','category','text');add('Danh mục cha','parent_category','text');add('Tên địa điểm','name','text',true);add('Địa chỉ','address','text',true);add('Điện thoại','phone');add('Website','business_url');add('Google Maps URL','map_url');add('Giờ mở cửa','hours');add('Giờ mở','open_time');add('Giờ đóng','close_time');add('Giá','price');add('Giá từ','price_min');add('Giá đến','price_max');add('Vĩ độ','lat');add('Kinh độ','lng');add('Tỉnh/thành','province');add('Mã tỉnh','province_code');add('Khu vực','locality');add('Mã quốc gia','country_code');add('Ghi chú','note','textarea',true);form.appendChild(grid);
+    add('Tên Category','category','text');add('Danh mục cha','parent_category','text');add('Tên địa điểm','name','text',true);add('Địa chỉ','address','text',true);add('Điện thoại','phone');add('Website','business_url');add('Google Maps URL','map_url');add('Giờ mở cửa','hours');add('Giờ mở','open_time');add('Giờ đóng','close_time');add('Giá','price');add('Giá từ','price_min');add('Giá đến','price_max');var latAdmin=add('Vĩ độ','lat'),lngAdmin=add('Kinh độ','lng');latAdmin.placeholder='22.483833 hoặc 22°29\'01.8"N';lngAdmin.placeholder='103.972194 hoặc 103°58\'19.9"E';add('Tỉnh/thành','province');add('Mã tỉnh','province_code');add('Khu vực','locality');add('Mã quốc gia','country_code');add('Ghi chú','note','textarea',true);form.appendChild(grid);form.appendChild(node('div','tla-note','Tọa độ nhận cả 2 dạng: thập phân (22.483833 / 103.972194) hoặc độ-phút-giây (22°29\'01.8"N / 103°58\'19.9"E). Khi lưu, hệ thống tự đổi về số thập phân.'));
     detail.appendChild(form);
     detail.appendChild(node('div','tla-section-title','Quản trị hiển thị'));
     var flags=node('div','tla-flags');
@@ -215,7 +254,7 @@
       var form=node('div',''),grid=node('div','tla-grid');
       function sf(label,name,type,wide){var f=field(label,name,p[name],type,wide);grid.appendChild(f.wrap);return f.input}
       var cat=field('Category','category_id','','select');categoryOptions(cat.input,p.category_id||'');cat.input.onchange=function(){var c=byId()[cat.input.value];if(c){form.querySelector('[data-field="category"]').value=c.name_vi;form.querySelector('[data-field="parent_category"]').value=parentName(c.id)}};grid.appendChild(cat.wrap);
-      sf('Tên Category','category');sf('Danh mục cha','parent_category');sf('Tên địa điểm','name','text',true);sf('Địa chỉ','address','text',true);sf('Điện thoại','phone');sf('Website','business_url');sf('Google Maps','map_url');sf('Giờ','hours');sf('Giá','price');sf('Vĩ độ','lat');sf('Kinh độ','lng');sf('Tỉnh/thành','province');sf('Khu vực','locality');sf('Ghi chú','note','textarea',true);form.appendChild(grid);
+      sf('Tên Category','category');sf('Danh mục cha','parent_category');sf('Tên địa điểm','name','text',true);sf('Địa chỉ','address','text',true);sf('Điện thoại','phone');sf('Website','business_url');sf('Google Maps','map_url');sf('Giờ','hours');sf('Giá','price');var latSug=sf('Vĩ độ','lat'),lngSug=sf('Kinh độ','lng');latSug.placeholder='22.483833 hoặc 22°29\'01.8"N';lngSug.placeholder='103.972194 hoặc 103°58\'19.9"E';sf('Tỉnh/thành','province');sf('Khu vực','locality');sf('Ghi chú','note','textarea',true);form.appendChild(grid);form.appendChild(node('div','tla-note','Có thể nhập tọa độ thập phân hoặc độ-phút-giây; hệ thống tự chuyển về thập phân khi duyệt.'));
       var flags=node('div','tla-flags');[['is_hot','Hot'],['is_trusted','Uy tín'],['verified','Xác minh']].forEach(function(x){var lab=node('label','tla-check'),i=node('input','');i.type='checkbox';i.checked=x[0]==='verified'?p.verified==='TRUE':checked(p[x[0]]);i.setAttribute('data-field',x[0]);lab.appendChild(i);lab.appendChild(document.createTextNode(x[1]));flags.appendChild(lab)});form.appendChild(flags);
       var top=node('div','tla-grid');var trf=field('TOP rank','top_rank',p.top_rank);top.appendChild(trf.wrap);top.appendChild(topScopePicker(p.top_scope,p));var tlf=field('Khu vực TOP','top_locality',p.top_locality),trd=field('Bán kính TOP (km)','top_radius_km',p.top_radius_km);top.appendChild(tlf.wrap);top.appendChild(trd.wrap);form.appendChild(top);
       var note=field('Ghi chú quản trị','admin_note',s.admin_note||'','textarea',true);form.appendChild(note.wrap);detail.appendChild(form);
