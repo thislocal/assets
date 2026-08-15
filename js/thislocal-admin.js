@@ -1,4 +1,4 @@
-/* THIS LOCAL ADMIN V17.77 - safe suggestion review: APPROVED confirmation + create/update target selection */
+/* THIS LOCAL ADMIN V17.78 - Supabase-only suggestion review; legacy sheet status normalized to PENDING */
 /* THIS LOCAL ADMIN V17.72 - DMS/decimal coordinate normalization */
 /* THIS LOCAL admin runtime V17.65 - compatible multi TOP storage. */
 /* THIS LOCAL ADMIN V17.71: accept decimal and DMS coordinates; normalize to decimal before saving. */
@@ -263,18 +263,26 @@
     save.onclick=async function(){try{save.disabled=true;var data=collect(form,p);applyTopScopes(data,form);data.approval_status=data._approved_checkbox?'APPROVED':'PENDING';delete data._approved_checkbox;data.verified=data.verified?'TRUE':'FALSE';var d=await api('',{method:'POST',body:JSON.stringify({action:'savePlace',id:p.id||'',place:data})});state.places.active=d.place.id;await render()}catch(e){errBox(detail,e.message||String(e))}finally{save.disabled=false}}
   }
 
+
+  function suggestionUiStatus(s){
+    var st=clean(s&&s.status).toUpperCase();
+    /* Legacy cũ từ thời Sheet: trên giao diện quản trị luôn coi là PENDING. */
+    if(st==='IMPORTED_TO_SHEETS')return 'PENDING';
+    return st||'PENDING';
+  }
+
   async function suggestions(c){
     c.innerHTML='';var tb=node('div','tla-toolbar'),st=node('select','');addSelectOptions(st,[{value:'PENDING',label:'Chờ duyệt'},{value:'APPROVED',label:'Đã duyệt'},{value:'REJECTED',label:'Từ chối'},{value:'ALL',label:'Tất cả'}]);st.value=state.suggestions.status;var ref=node('button','tla-btn','Làm mới');tb.appendChild(st);tb.appendChild(ref);c.appendChild(tb);
     var sp=node('div','tla-split'),list=node('div','tla-list'),detail=node('div','tla-detail');sp.appendChild(list);sp.appendChild(detail);c.appendChild(sp);st.onchange=function(){state.suggestions.status=st.value;state.suggestions.active='';suggestions(c)};ref.onclick=function(){suggestions(c)};
     list.innerHTML='<div class="tla-status">Đang tải...</div>';var d=await api('?action=suggestions&status='+encodeURIComponent(state.suggestions.status)+'&limit=100');state.suggestions.items=d.suggestions||[];list.innerHTML='';
     if(!state.suggestions.items.length)list.appendChild(node('div','tla-status','Không có đề xuất.'));
-    state.suggestions.items.forEach(function(s){var p=s.payload||{},b=node('button','tla-item');var badges=node('div','tla-badges');badges.appendChild(node('span','tla-badge '+(s.status==='PENDING'?'pending':s.status==='APPROVED'?'ok':'danger'),s.status));badges.appendChild(node('span','tla-badge',clean(s.submit_type).toLowerCase()==='update'?'Cập nhật':'Thêm mới'));b.appendChild(badges);b.appendChild(node('strong','',p.name||'(Chưa có tên)'));b.appendChild(node('small','',(p.category||'')+(p.address?' · '+p.address:'')+' · '+fmt(s.created_at)));b.onclick=function(){suggestionEditor(detail,s.id)};list.appendChild(b)});detail.innerHTML='<div class="tla-empty">Chọn một đề xuất để kiểm tra.</div>'
+    state.suggestions.items.forEach(function(s){var p=s.payload||{},uiStatus=suggestionUiStatus(s),b=node('button','tla-item');var badges=node('div','tla-badges');badges.appendChild(node('span','tla-badge '+(uiStatus==='PENDING'?'pending':uiStatus==='APPROVED'?'ok':'danger'),uiStatus));badges.appendChild(node('span','tla-badge',clean(s.submit_type).toLowerCase()==='update'?'Cập nhật':'Thêm mới'));b.appendChild(badges);b.appendChild(node('strong','',p.name||'(Chưa có tên)'));b.appendChild(node('small','',(p.category||'')+(p.address?' · '+p.address:'')+' · '+fmt(s.created_at)));b.onclick=function(){suggestionEditor(detail,s.id)};list.appendChild(b)});detail.innerHTML='<div class="tla-empty">Chọn một đề xuất để kiểm tra.</div>'
   }
 
   async function suggestionEditor(detail,id){
     detail.innerHTML='<div class="tla-status">Đang tải...</div>';
     try{
-      var d=await api('?action=suggestionDetail&id='+encodeURIComponent(id)),s=d.suggestion,p=s.payload||{};
+      var d=await api('?action=suggestionDetail&id='+encodeURIComponent(id)),s=d.suggestion,p=s.payload||{},uiStatus=suggestionUiStatus(s);
       detail.innerHTML='';
 
       var originalUpdate=clean(s.submit_type).toLowerCase()==='update';
@@ -340,7 +348,7 @@
       flags.appendChild(approvedLab);
       form.appendChild(flags);
       form.appendChild(node('div','tla-note','Tick APPROVED trước khi bấm “Duyệt & lưu”. Đây là bước xác nhận cuối để đưa dữ liệu đã duyệt vào Places.'));
-      form.appendChild(node('div','tla-note','V17.77: chỉ báo duyệt thành công khi địa điểm gốc đã trả về dữ liệu mới và đề xuất đã thực sự chuyển từ PENDING sang APPROVED.'));
+      form.appendChild(node('div','tla-note','V17.78: dữ liệu quản trị đọc/ghi trực tiếp Supabase. Trạng thái legacy cũ được tự chuẩn hóa về PENDING; chỉ báo thành công khi Places đã đổi thật và đề xuất đã thành APPROVED.'));
 
       form.appendChild(node('div','tla-section-title','Cách xử lý đề xuất'));
       var reviewBox=node('div','tla-note');
@@ -472,7 +480,7 @@
       detail.appendChild(form);
 
       var act=node('div','tla-actions');
-      if(s.status==='PENDING'){
+      if(uiStatus==='PENDING'){
         var yes=node('button','tla-btn primary','Duyệt & lưu'),no=node('button','tla-btn danger','Từ chối');
         yes.type='button';no.type='button';
         act.appendChild(yes);act.appendChild(no);
@@ -519,7 +527,7 @@
             });
 
             if(!reviewResult||reviewResult.status!=='APPROVED'||reviewResult.verified_update!==true){
-              throw new Error('Admin API chưa xác nhận được UPDATE + APPROVED. Hãy chắc chắn đã deploy this-local-admin-api V17.77.');
+              throw new Error('Admin API chưa xác nhận được UPDATE + APPROVED. Hãy chắc chắn đã deploy this-local-admin-api V17.78.');
             }
             if(reviewMode==='update'&&clean(reviewResult.place_id)!==targetPlaceId){
               throw new Error('ID địa điểm được cập nhật không khớp ID đã chọn. Dừng để tránh sửa nhầm dữ liệu.');
@@ -552,7 +560,7 @@
           }
         };
       }else{
-        act.appendChild(node('div','tla-note','Đã xử lý: '+s.status+(s.approved_place_id?' · Place ID: '+s.approved_place_id:'')+(s.reviewed_by?' · '+s.reviewed_by:'')+(s.reviewed_at?' · '+fmt(s.reviewed_at):'')));
+        act.appendChild(node('div','tla-note','Đã xử lý: '+uiStatus+(s.approved_place_id?' · Place ID: '+s.approved_place_id:'')+(s.reviewed_by?' · '+s.reviewed_by:'')+(s.reviewed_at?' · '+fmt(s.reviewed_at):'')));
       }
       detail.appendChild(act);
     }catch(e){
