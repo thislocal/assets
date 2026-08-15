@@ -1133,6 +1133,25 @@
       areaGrid.appendChild(localityField);
       form.appendChild(areaGrid);
 
+      /* V17.69: tọa độ là dữ liệu bắt buộc khi đề xuất/cập nhật địa điểm. */
+      var coordGrid=el('div','vlc-grid');
+      var latField=inputField('Vĩ độ','lat',place&&place.lat,true,'text');
+      var lngField=inputField('Kinh độ','lng',place&&place.lng,true,'text');
+      var latInp=latField.querySelector('input');
+      var lngInp=lngField.querySelector('input');
+      latInp.inputMode='decimal';lngInp.inputMode='decimal';
+      latInp.autocomplete='off';lngInp.autocomplete='off';
+      latInp.placeholder='Ví dụ: 22.480123';
+      lngInp.placeholder='Ví dụ: 103.971234';
+      addHelp(latField,'Bắt buộc. Ví dụ: 22.480123.');
+      addHelp(lngField,'Bắt buộc. Ví dụ: 103.971234.');
+      var latError=addError(latField,'Vĩ độ là bắt buộc và phải nằm trong khoảng -90 đến 90.');
+      var lngError=addError(lngField,'Kinh độ là bắt buộc và phải nằm trong khoảng -180 đến 180.');
+      coordGrid.appendChild(latField);coordGrid.appendChild(lngField);
+      form.appendChild(coordGrid);
+      var coordHelp=el('div','vlc-field-help','Ví dụ đúng: Vĩ độ 22.480123 · Kinh độ 103.971234. Chỉ nhập số, không nhập chữ N/E và không đảo hai ô. Vĩ độ và Kinh độ càng chính xác, địa điểm càng dễ được hiển thị đúng cho người dùng thực tế ở gần khu vực đó. Nếu đang ở tại địa điểm, hãy dùng nút “Dùng vị trí hiện tại của tôi” bên dưới để lấy tọa độ chính xác hơn.');
+      form.appendChild(coordHelp);
+
       form.appendChild(inputField('Link Google Maps','map_url',place&&place.map_url,false,'url'));
       var websiteField=inputField('Website','business_url',place&&place.business_url,false,'text');
       websiteField.querySelector('input').placeholder='Ví dụ: thislocal.vn';
@@ -1220,9 +1239,15 @@
 
       var geoBtn=el('button','vlc-btn vlc-btn-soft','Dùng vị trí hiện tại của tôi');geoBtn.type='button';
       form.appendChild(geoBtn);
-      var latInp=el('input','');latInp.type='hidden';latInp.name='lat';
-      var lngInp=el('input','');lngInp.type='hidden';lngInp.name='lng';
-      form.appendChild(latInp);form.appendChild(lngInp);
+
+      [latInp,lngInp].forEach(function(inp){
+        inp.addEventListener('input',function(){
+          inp.value=String(inp.value||'').replace(/[^0-9,.-]/g,'');
+          inp.classList.remove('is-invalid');
+          if(inp===latInp)latError.classList.remove('is-show');
+          else lngError.classList.remove('is-show');
+        });
+      });
 
       phoneInput.addEventListener('input',function(){
         phoneInput.classList.remove('is-invalid');
@@ -1304,6 +1329,20 @@
           hiddenPhone.value='';
         }
 
+        var latRaw=safe(latInp.value).replace(',', '.');
+        var lngRaw=safe(lngInp.value).replace(',', '.');
+        var latNum=Number(latRaw),lngNum=Number(lngRaw);
+        latInp.classList.remove('is-invalid');lngInp.classList.remove('is-invalid');
+        latError.classList.remove('is-show');lngError.classList.remove('is-show');
+        if(!latRaw||!isFinite(latNum)||latNum<-90||latNum>90){
+          latInp.classList.add('is-invalid');latError.classList.add('is-show');latInp.focus();return false;
+        }
+        if(!lngRaw||!isFinite(lngNum)||lngNum<-180||lngNum>180){
+          lngInp.classList.add('is-invalid');lngError.classList.add('is-show');lngInp.focus();return false;
+        }
+        latInp.value=String(Math.round(latNum*1000000)/1000000);
+        lngInp.value=String(Math.round(lngNum*1000000)/1000000);
+
         if(!valid24Time(openTimeInput.value)){openTimeInput.classList.add('is-invalid');openTimeError.classList.add('is-show');openTimeInput.focus();return false;}
         if(!valid24Time(closeTimeInput.value)){closeTimeInput.classList.add('is-invalid');closeTimeError.classList.add('is-show');closeTimeInput.focus();return false;}
         hiddenHours.value=toDisplayHours(openTimeInput.value,closeTimeInput.value);
@@ -1334,7 +1373,10 @@
         if(!navigator.geolocation)return;
         geoBtn.disabled=true;geoBtn.textContent='Đang lấy vị trí...';
         navigator.geolocation.getCurrentPosition(function(pos){
-          latInp.value=pos.coords.latitude;lngInp.value=pos.coords.longitude;
+          latInp.value=String(Math.round(Number(pos.coords.latitude)*1000000)/1000000);
+          lngInp.value=String(Math.round(Number(pos.coords.longitude)*1000000)/1000000);
+          latInp.classList.remove('is-invalid');lngInp.classList.remove('is-invalid');
+          latError.classList.remove('is-show');lngError.classList.remove('is-show');
           reverseCurrentLocality(pos,function(meta){
             if(meta){
               if(provinceInput&&!safe(provinceInput.value))provinceInput.value=safe(meta.region);
@@ -1375,6 +1417,8 @@
           '',
           'Tên địa điểm: '+safe(form.querySelector('[name="name"]').value),
           'Địa chỉ: '+safe(form.querySelector('[name="address"]').value),
+          'Vĩ độ: '+safe(latInp.value),
+          'Kinh độ: '+safe(lngInp.value),
           hiddenPhone.value ? 'Điện thoại: '+hiddenPhone.value : '',
           safe(form.querySelector('[name="business_url"]').value) ? 'Website: '+safe(form.querySelector('[name="business_url"]').value) : '',
           hiddenHours.value ? 'Giờ: '+hiddenHours.value : '',
@@ -2826,6 +2870,9 @@
     'Không thể tải danh sách lúc này. Vui lòng thử lại sau.':{en:'The list cannot be loaded right now. Please try again later.',zh:'目前无法加载列表，请稍后再试。',th:'ขณะนี้โหลดรายการไม่ได้ โปรดลองอีกครั้งภายหลัง'},
     'Địa điểm':{en:'Place',zh:'地点',th:'สถานที่'},
     'Địa chỉ':{en:'Address',zh:'地址',th:'ที่อยู่'},
+    'Vĩ độ':{en:'Latitude',zh:'纬度',th:'ละติจูด'},
+    'Kinh độ':{en:'Longitude',zh:'经度',th:'ลองจิจูด'},
+    'Ví dụ đúng: Vĩ độ 22.480123 · Kinh độ 103.971234. Chỉ nhập số, không nhập chữ N/E và không đảo hai ô. Vĩ độ và Kinh độ càng chính xác, địa điểm càng dễ được hiển thị đúng cho người dùng thực tế ở gần khu vực đó. Nếu đang ở tại địa điểm, hãy dùng nút “Dùng vị trí hiện tại của tôi” bên dưới để lấy tọa độ chính xác hơn.':{en:'Example: Latitude 22.480123 · Longitude 103.971234. Enter numbers only, do not add N/E, and do not swap the two fields. More accurate coordinates help the place appear correctly to real users nearby. If you are at the place, use “Use my current location” below.',zh:'正确示例：纬度 22.480123 · 经度 103.971234。只输入数字，不要输入 N/E，也不要把两个字段填反。坐标越准确，地点越容易正确展示给附近的真实用户。如果你正在该地点，请使用下方“使用我的当前位置”。',th:'ตัวอย่างที่ถูกต้อง: ละติจูด 22.480123 · ลองจิจูด 103.971234 กรอกเฉพาะตัวเลข ไม่ต้องใส่ N/E และอย่าสลับสองช่อง พิกัดที่แม่นยำช่วยให้สถานที่แสดงต่อผู้ใช้จริงที่อยู่ใกล้ได้ถูกต้อง หากคุณอยู่ที่สถานที่นั้น ให้ใช้ปุ่ม “ใช้ตำแหน่งปัจจุบันของฉัน” ด้านล่าง'},
     'Giá từ':{en:'Price from',zh:'最低价格',th:'ราคาเริ่มต้น'},
     'Giá đến':{en:'Price up to',zh:'最高价格',th:'ราคาสูงสุด'},
 
