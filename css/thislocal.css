@@ -1,4 +1,4 @@
-/* THIS LOCAL external CSS V17.94 - restored TOP group/count UI + auto location. */
+/* THIS LOCAL external CSS V17.95 - 8 languages + category/UI i18n; TOP + auto location retained. */
 /* By Vinh Béo */
 
 :root{
@@ -212,6 +212,7 @@ html[data-tl-lang] .tl-lang[data-lang]{display:none!important}
 html[data-tl-lang="vi"] .tl-lang[data-lang="vi"],
 html[data-tl-lang="en"] .tl-lang[data-lang="en"],
 html[data-tl-lang="zh"] .tl-lang[data-lang="zh"],
+html[data-tl-lang="zht"] .tl-lang[data-lang="zht"],
 html[data-tl-lang="th"] .tl-lang[data-lang="th"],
 html[data-tl-lang="ru"] .tl-lang[data-lang="ru"],
 html[data-tl-lang="ja"] .tl-lang[data-lang="ja"],
@@ -1866,4 +1867,12 @@ body.tl-allcats-page .post-body>.tl-allcats-v24{margin-top:0}
   .tl-home-top-group-head{align-items:flex-start}
   .tl-home-top-group-head h4{font-size:17px}
   .tl-home-top-group-head p{font-size:10px}
+}
+
+
+/* THIS LOCAL V17.95 - 8-language horizontal flag row */
+@media(max-width:360px){
+  .tl-lang-simple{gap:2px;padding:3px}
+  .tl-lang-simple button{width:32px;min-width:32px;height:28px}
+  .tl-lang-simple .tl-flag-icon{width:24px;height:16px}
 }
