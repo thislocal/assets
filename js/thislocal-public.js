@@ -1,4 +1,4 @@
-/* THIS LOCAL PUBLIC V17.93 - AUTO LOCATION PC/MOBILE + static view-all + child picker */
+/* THIS LOCAL PUBLIC V17.94 - AUTO LOCATION PC/MOBILE + RESTORED TOP GROUP UI */
 /* By Vinh Béo */
 
 /* ---- original script block 6 ---- */
@@ -15,7 +15,7 @@
   window.TL_DATA_API_URL=VLC_API_URL;
   window.TL_GUIDE_API_URL=VLC_API_URL;
   window.TL_GUIDE_ENGINE_VERSION='2026-08-16-auto-location-v19';
-  window.TL_PUBLIC_BUILD='17.93-auto-location-pc-mobile';
+  window.TL_PUBLIC_BUILD='17.94-auto-location-pc-mobile-top-ui';
 
   /* Danh mục luôn lấy qua API dữ liệu; Blogger không đọc trực tiếp Google Sheets/Supabase. */
   var CATEGORY_CATALOG_CACHE_KEY='tl_category_catalog_v4';
