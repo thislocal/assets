@@ -1,8 +1,5 @@
-/* THIS LOCAL PUBLIC V17.92 - static desktop/mobile view-all slot + child picker */
-/* THIS LOCAL PUBLIC V17.72 - DMS proposal coordinates + mobile GPS placement */
-/* THIS LOCAL PUBLIC V17.66 - radius independent + diagnostic */
-/* THIS LOCAL public runtime extracted from V17.55. */
-/* V17.73 - optional coordinates + Google/Apple Maps bidirectional sync. */
+/* THIS LOCAL PUBLIC V17.93 - AUTO LOCATION PC/MOBILE + static view-all + child picker */
+/* By Vinh Béo */
 
 /* ---- original script block 6 ---- */
 (function(){
@@ -17,8 +14,8 @@
   var VLC_API_URL=(window.TL_DATA_API_URL||'').replace(/\/+$/,'');
   window.TL_DATA_API_URL=VLC_API_URL;
   window.TL_GUIDE_API_URL=VLC_API_URL;
-  window.TL_GUIDE_ENGINE_VERSION='2026-08-12-global-data-v18';
-  window.TL_PUBLIC_BUILD='17.65-restore-v17.58';
+  window.TL_GUIDE_ENGINE_VERSION='2026-08-16-auto-location-v19';
+  window.TL_PUBLIC_BUILD='17.93-auto-location-pc-mobile';
 
   /* Danh mục luôn lấy qua API dữ liệu; Blogger không đọc trực tiếp Google Sheets/Supabase. */
   var CATEGORY_CATALOG_CACHE_KEY='tl_category_catalog_v4';
@@ -4422,20 +4419,88 @@
     return p;
   }
   function setupLocationNotice(){
-    var box=document.getElementById('tlLocationConsent'),btn=document.getElementById('tlLocationConsentButton'),title=document.getElementById('tlLocationConsentTitle'),txt=document.getElementById('tlLocationConsentText');
+    var box=document.getElementById('tlLocationConsent'),btn=document.getElementById('tlLocationConsentButton'),closeBtn=document.getElementById('tlLocationConsentClose'),title=document.getElementById('tlLocationConsentTitle'),txt=document.getElementById('tlLocationConsentText');
     if(!box||!btn)return;
-    if(savedLocation()){box.hidden=true;document.documentElement.classList.remove('tl-location-notice-open');return;}
-    box.hidden=false;document.documentElement.classList.add('tl-location-notice-open');
-    btn.addEventListener('click',function(){
-      if(!navigator.geolocation){title.textContent='Không dùng được vị trí';txt.textContent='Trình duyệt này không hỗ trợ xác định vị trí.';return;}
-      btn.disabled=true;btn.textContent='Đang lấy vị trí...';
+    var DISMISS_KEY='tl_location_notice_dismissed_v2';
+    var requesting=false;
+    function isDismissed(){try{return sessionStorage.getItem(DISMISS_KEY)==='1';}catch(e){return false;}}
+    function setDismissed(v){try{if(v)sessionStorage.setItem(DISMISS_KEY,'1');else sessionStorage.removeItem(DISMISS_KEY);}catch(e){}}
+    function setOpen(open){box.hidden=!open;document.documentElement.classList.toggle('tl-location-notice-open',!!open);}
+    function setNotice(state,heading,message,buttonText,force){
+      box.setAttribute('data-state',state||'idle');
+      if(title)title.textContent=heading||'Dùng vị trí gần bạn';
+      if(txt)txt.textContent=message||'Cho phép vị trí để THIS LOCAL ưu tiên các địa điểm phù hợp quanh bạn.';
+      btn.hidden=false;btn.disabled=state==='requesting';btn.textContent=buttonText||(state==='requesting'?'Đang lấy...':'Cho phép');
+      if(force||!isDismissed())setOpen(true);else setOpen(false);
+    }
+    function clearStaleLocation(){
+      try{localStorage.removeItem(LOCATION_KEY);}catch(e){}
+      var h=document.getElementById('tlHeaderLocality');if(h)h.textContent='Chưa bật vị trí';
+      var s=document.getElementById('tlLocationStatus');if(s){s.textContent='Vị trí giúp THIS LOCAL ưu tiên địa điểm gần bạn.';s.classList.remove('is-active','is-warning');}
+    }
+    function enrichLocation(p,pos){
+      if(!p||!pos||!pos.coords||typeof window.TL_REVERSE_CURRENT_LOCALITY!=='function')return;
+      window.TL_REVERSE_CURRENT_LOCALITY(pos,function(meta){
+        if(!meta)return;
+        p.locality=meta.locality||'';p.region=meta.region||'';p.countryCode=meta.countryCode||'';p.countryName=meta.countryName||'';p.currency=meta.currency||p.currency||'';p.savedAt=Date.now();
+        try{localStorage.setItem(LOCATION_KEY,JSON.stringify(p));}catch(e){}
+        try{document.dispatchEvent(new CustomEvent('tl:locationchange',{detail:p}));}catch(e){}
+      });
+    }
+    function storePosition(pos){var p=saveLocation(pos);if(p)enrichLocation(p,pos);return p;}
+    function requestLocation(manual){
+      if(requesting)return;
+      if(!navigator.geolocation){
+        setNotice('unsupported','Không dùng được vị trí','Trình duyệt hoặc thiết bị này không hỗ trợ xác định vị trí.','Đóng',true);btn.onclick=function(){setDismissed(true);setOpen(false);};return;
+      }
+      requesting=true;
+      if(manual)setDismissed(false);
+      if(manual)setNotice('requesting','Đang xác định vị trí','THIS LOCAL đang lấy vị trí hiện tại của bạn.','Đang lấy...',true);else setOpen(false);
       navigator.geolocation.getCurrentPosition(function(pos){
-        saveLocation(pos);box.hidden=true;document.documentElement.classList.remove('tl-location-notice-open');btn.disabled=false;btn.textContent='Bật vị trí';
-      },function(){
-        btn.disabled=false;btn.textContent='Thử lại';title.textContent='Chưa xác nhận được vị trí';txt.textContent='Hãy cho phép quyền vị trí của trình duyệt rồi bấm Thử lại.';
-      },{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
-    });
-    document.addEventListener('tl:locationchange',function(){box.hidden=true;document.documentElement.classList.remove('tl-location-notice-open');});
+        requesting=false;btn.disabled=false;btn.textContent='Cho phép';btn.onclick=null;
+        if(storePosition(pos)){setDismissed(false);setOpen(false);}
+      },function(err){
+        requesting=false;btn.disabled=false;btn.onclick=null;
+        if(err&&err.code===1){
+          clearStaleLocation();
+          setNotice('denied','Quyền vị trí đang bị chặn','Bật quyền Vị trí cho thislocal.blogspot.com trong cài đặt trình duyệt, sau đó bấm Thử lại.','Thử lại',true);
+        }else{
+          setNotice('error','Chưa lấy được vị trí','Hãy kiểm tra GPS/kết nối mạng rồi bấm Thử lại.','Thử lại',!!manual);
+        }
+      },{enableHighAccuracy:true,timeout:15000,maximumAge:manual?0:120000});
+    }
+    function handlePermission(state){
+      if(state==='granted'){setOpen(false);requestLocation(false);return;}
+      if(state==='denied'){
+        clearStaleLocation();
+        setNotice('denied','Quyền vị trí đang bị chặn','Bật quyền Vị trí cho thislocal.blogspot.com trong cài đặt trình duyệt, sau đó bấm Thử lại.','Thử lại',false);
+        return;
+      }
+      /* state=prompt: chủ động gọi Geolocation để trình duyệt hiện hộp xin quyền trên cả PC và mobile. */
+      requestLocation(false);
+    }
+    btn.addEventListener('click',function(){requestLocation(true);});
+    if(closeBtn)closeBtn.addEventListener('click',function(){setDismissed(true);setOpen(false);});
+    document.addEventListener('tl:locationchange',function(){setDismissed(false);setOpen(false);});
+
+    if(!navigator.geolocation){
+      setNotice('unsupported','Không dùng được vị trí','Trình duyệt hoặc thiết bị này không hỗ trợ xác định vị trí.','Đóng',false);
+      return;
+    }
+    if(navigator.permissions&&typeof navigator.permissions.query==='function'){
+      navigator.permissions.query({name:'geolocation'}).then(function(permission){
+        handlePermission(permission.state);
+        permission.onchange=function(){handlePermission(permission.state);};
+      }).catch(function(){
+        var cached=savedLocation();
+        if(cached&&cached.savedAt&&Date.now()-Number(cached.savedAt)<600000){setOpen(false);return;}
+        requestLocation(false);
+      });
+    }else{
+      /* Safari/thiết bị không có Permissions API: tránh hỏi lặp nếu vừa có vị trí trong 10 phút. */
+      var cached=savedLocation();
+      if(cached&&cached.savedAt&&Date.now()-Number(cached.savedAt)<600000)setOpen(false);else requestLocation(false);
+    }
   }
   function setupMobileDock(){
     var dock=document.getElementById('tlMobileDock');if(!dock||dock.__tlFixed)return;dock.__tlFixed=true;
