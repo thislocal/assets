@@ -1,4 +1,4 @@
-/* THIS LOCAL Next v18.10
+/* THIS LOCAL Next v18.11
  * 7 modules: context discovery, natural-language search, itinerary,
  * trust/freshness, owner claims, area following, PWA + structured data.
  * The module is additive and fails closed: the existing v17.96 engine remains
@@ -10,7 +10,7 @@
   if (window.__TL_NEXT_V1810__) return;
   window.__TL_NEXT_V1810__ = true;
 
-  var VERSION = '18.10';
+  var VERSION = '18.11';
   var API = String(window.TL_DATA_API_URL || window.TL_GUIDE_API_URL || '').trim();
   var LOCATION_KEY = 'tl_user_location_v1';
   var WEATHER_KEY = 'tl_weather_cache_v1';
@@ -96,6 +96,7 @@
       '.tlx-follow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tlx-follow input{width:190px;max-width:100%;border:1px solid #cfd8d2;border-radius:11px;padding:9px 11px;font:inherit}.tlx-feed{display:grid;gap:8px;margin-top:12px}.tlx-feed-item{padding:11px 13px;border-radius:12px;background:#f7f9f8}.tlx-feed-item strong{display:block;margin-bottom:3px}.tlx-feed-item small{color:#69736d}',
       '.tlx-modal{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(9,18,13,.6)}.tlx-dialog{position:relative;width:min(620px,100%);max-height:min(820px,92vh);overflow:auto;border-radius:22px;background:#fff;padding:24px;box-shadow:0 30px 80px rgba(0,0,0,.26)}.tlx-dialog h2{margin:0 34px 8px 0}.tlx-close{position:absolute;right:15px;top:14px;width:34px;height:34px;border:0;border-radius:50%;background:#eef2ef;font-size:22px;cursor:pointer}.tlx-form{display:grid;gap:12px;margin-top:17px}.tlx-form label{display:grid;gap:5px;font-weight:700;font-size:13px}.tlx-form input,.tlx-form textarea{border:1px solid #cdd6d0;border-radius:11px;padding:11px;font:inherit}.tlx-form textarea{min-height:92px;resize:vertical}.tlx-note{font-size:12px;line-height:1.5;color:#657068}.tlx-toast{position:fixed;z-index:2147483647;right:18px;bottom:18px;max-width:360px;padding:12px 15px;border-radius:13px;background:#17201b;color:#fff;box-shadow:0 12px 35px rgba(0,0,0,.22)}',
       '.tlx-install{display:none}.tlx-install.is-ready{display:inline-flex}',
+      '.tlx-restore{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:16px 0 22px;padding:13px 15px;border:1px dashed #b9d2c2;border-radius:15px;background:#f5fbf7;color:#526159}.tlx-restore span{font-size:13px}.tlx-restore .tlx-btn{padding:8px 12px;border-radius:10px;font-size:13px}',
       '@media(max-width:850px){.tlx-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tlx-shell{padding:19px}}@media(max-width:560px){.tlx-grid{grid-template-columns:1fr}.tlx-ask{grid-template-columns:1fr}.tlx-head{display:block}.tlx-shell{margin:16px 0 22px;padding:16px;border-radius:19px}.tlx-dialog{padding:20px}}'
     ].join('');
     document.head.appendChild(style);
@@ -694,13 +695,26 @@
     });
   }
 
+  function showDiscoveryRestore(anchor) {
+    if (!anchor || !anchor.parentNode || document.getElementById('tlNextRestore')) return;
+    var restore = el('div', 'tlx-restore'); restore.id = 'tlNextRestore';
+    restore.appendChild(el('span', '', 'Gợi ý thông minh đang được ẩn.'));
+    restore.appendChild(button('tlx-btn is-soft', 'Hiện lại gợi ý', function () {
+      writeJSON(DISMISSED_KEY, false);
+      restore.remove();
+      buildDiscovery();
+    }));
+    anchor.parentNode.insertBefore(restore, anchor);
+  }
+
   function buildDiscovery() {
     if (document.getElementById('tlNextDiscovery')) return;
     var home = document.body && (document.body.classList.contains('tl-home-view') || location.pathname === '/');
     if (!home) return;
-    if (readJSON(DISMISSED_KEY, false)) return;
     var anchor = document.querySelector('.tl-home-categories');
     if (!anchor || !anchor.parentNode) return;
+    if (readJSON(DISMISSED_KEY, false)) { showDiscoveryRestore(anchor); return; }
+    var oldRestore = document.getElementById('tlNextRestore'); if (oldRestore) oldRestore.remove();
     var shell = el('section', 'tlx-shell'); shell.id = 'tlNextDiscovery';
     var head = el('div', 'tlx-head');
     var copy = el('div'); copy.appendChild(el('span', 'tlx-kicker', 'Khám phá thông minh')); copy.appendChild(el('h2', '', 'Đi đâu ngay bây giờ?'));
@@ -708,7 +722,11 @@
     head.appendChild(copy);
     var headActions = el('div', 'tlx-actions');
     headActions.appendChild(button('tlx-btn is-soft tlx-install', 'Cài THIS LOCAL'));
-    headActions.appendChild(button('tlx-btn is-plain', 'Ẩn', function () { writeJSON(DISMISSED_KEY, true); shell.remove(); }));
+    headActions.appendChild(button('tlx-btn is-plain', 'Ẩn', function () {
+      writeJSON(DISMISSED_KEY, true);
+      shell.remove();
+      showDiscoveryRestore(anchor);
+    }));
     head.appendChild(headActions); shell.appendChild(head);
     var contextHost = el('div', 'tlx-context'); contextHost.id = 'tlNextContext'; shell.appendChild(contextHost);
     var ask = el('form', 'tlx-ask');
