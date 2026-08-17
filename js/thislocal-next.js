@@ -1,4 +1,4 @@
-/* THIS LOCAL Next v18.11
+/* THIS LOCAL Next v18.13
  * 7 modules: context discovery, natural-language search, itinerary,
  * trust/freshness, owner claims, area following, PWA + structured data.
  * The module is additive and fails closed: the existing v17.96 engine remains
@@ -10,7 +10,7 @@
   if (window.__TL_NEXT_V1810__) return;
   window.__TL_NEXT_V1810__ = true;
 
-  var VERSION = '18.11';
+  var VERSION = '18.13';
   var API = String(window.TL_DATA_API_URL || window.TL_GUIDE_API_URL || '').trim();
   var LOCATION_KEY = 'tl_user_location_v1';
   var WEATHER_KEY = 'tl_weather_cache_v1';
@@ -708,6 +708,13 @@
   }
 
   function buildDiscovery() {
+    if (window.TL_NEXT_DISCOVERY_ENABLED === false) {
+      var pausedDiscovery = document.getElementById('tlNextDiscovery');
+      var pausedRestore = document.getElementById('tlNextRestore');
+      if (pausedDiscovery) pausedDiscovery.remove();
+      if (pausedRestore) pausedRestore.remove();
+      return;
+    }
     if (document.getElementById('tlNextDiscovery')) return;
     var home = document.body && (document.body.classList.contains('tl-home-view') || location.pathname === '/');
     if (!home) return;
