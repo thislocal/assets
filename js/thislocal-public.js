@@ -1,4 +1,4 @@
-/* THIS LOCAL PUBLIC V17.95.1 - 8 LANGUAGES + CATEGORY/UI I18N + AUTO LOCATION */
+/* THIS LOCAL PUBLIC V17.96 - WEATHER */
 /* By Vinh Béo */
 
 /* ---- original script block 6 ---- */
@@ -15,7 +15,7 @@
   window.TL_DATA_API_URL=VLC_API_URL;
   window.TL_GUIDE_API_URL=VLC_API_URL;
   window.TL_GUIDE_ENGINE_VERSION='2026-08-16-auto-location-v19';
-  window.TL_PUBLIC_BUILD='17.95-8lang-category-i18n';
+  window.TL_PUBLIC_BUILD='17.96-weather';
 
   /* Danh mục luôn lấy qua API dữ liệu; Blogger không đọc trực tiếp Google Sheets/Supabase. */
   var CATEGORY_CATALOG_CACHE_KEY='tl_category_catalog_v4';
@@ -1698,6 +1698,213 @@
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
   else boot();
+})();
+
+
+/* ---- THIS LOCAL V17.96: compact location-aware weather forecast ---- */
+(function(){
+  'use strict';
+
+  var LOCATION_KEY='tl_user_location_v1';
+  var WEATHER_CACHE_KEY='tl_weather_cache_v1';
+  var WEATHER_CONSENT_KEY='tl_weather_provider_consent_v1';
+  var CACHE_MS=20*60*1000;
+  var activeRequest=0;
+  var activeKey='';
+  var widget=null,summary=null,iconEl=null,titleEl=null,metaEl=null,details=null,forecastEl=null;
+
+  var TEXT={
+    vi:{title:'Thời tiết quanh bạn',noLocation:'Bật vị trí để xem thời tiết quanh bạn.',consent:'Bấm để xem; vị trí gần đúng sẽ được gửi tới Open-Meteo.',loading:'Đang tải dự báo thời tiết...',error:'Chưa tải được thời tiết. Bấm để thử lại.',rain:'Mưa hôm nay',feels:'Cảm giác như',source:'Dữ liệu thời tiết bởi Open-Meteo',open:'Mở dự báo 5 ngày',close:'Thu gọn dự báo',today:'Hôm nay'},
+    en:{title:'Weather near you',noLocation:'Enable location to see weather near you.',consent:'Tap to view; an approximate location will be sent to Open-Meteo.',loading:'Loading weather forecast...',error:'Weather is unavailable. Tap to retry.',rain:'Rain today',feels:'Feels like',source:'Weather data by Open-Meteo',open:'Open 5-day forecast',close:'Collapse forecast',today:'Today'},
+    zh:{title:'你附近的天气',noLocation:'开启定位以查看附近天气。',consent:'点击查看；大致位置将发送至 Open-Meteo。',loading:'正在加载天气预报...',error:'暂时无法加载天气，点击重试。',rain:'今日降雨概率',feels:'体感',source:'天气数据由 Open-Meteo 提供',open:'打开5天天气预报',close:'收起天气预报',today:'今天'},
+    zht:{title:'你附近的天氣',noLocation:'開啟定位以查看附近天氣。',consent:'點擊查看；大致位置將傳送至 Open-Meteo。',loading:'正在載入天氣預報...',error:'暫時無法載入天氣，點擊重試。',rain:'今日降雨機率',feels:'體感',source:'天氣資料由 Open-Meteo 提供',open:'開啟5天天氣預報',close:'收合天氣預報',today:'今天'},
+    th:{title:'อากาศใกล้คุณ',noLocation:'เปิดตำแหน่งเพื่อดูสภาพอากาศใกล้คุณ',consent:'แตะเพื่อดู โดยจะส่งตำแหน่งโดยประมาณไปยัง Open-Meteo',loading:'กำลังโหลดพยากรณ์อากาศ...',error:'โหลดสภาพอากาศไม่ได้ แตะเพื่อลองใหม่',rain:'โอกาสฝนวันนี้',feels:'รู้สึกเหมือน',source:'ข้อมูลสภาพอากาศโดย Open-Meteo',open:'เปิดพยากรณ์ 5 วัน',close:'ย่อพยากรณ์',today:'วันนี้'},
+    ru:{title:'Погода рядом',noLocation:'Включите геолокацию, чтобы увидеть погоду рядом.',consent:'Нажмите: примерное местоположение будет отправлено Open-Meteo.',loading:'Загрузка прогноза погоды...',error:'Не удалось загрузить погоду. Нажмите, чтобы повторить.',rain:'Дождь сегодня',feels:'Ощущается как',source:'Данные о погоде: Open-Meteo',open:'Открыть прогноз на 5 дней',close:'Свернуть прогноз',today:'Сегодня'},
+    ja:{title:'現在地の天気',noLocation:'位置情報を有効にすると周辺の天気を確認できます。',consent:'タップすると、おおよその位置が Open-Meteo に送信されます。',loading:'天気予報を読み込んでいます...',error:'天気を読み込めません。タップして再試行。',rain:'今日の降水確率',feels:'体感',source:'気象データ: Open-Meteo',open:'5日間予報を開く',close:'予報を閉じる',today:'今日'},
+    ko:{title:'내 주변 날씨',noLocation:'위치를 켜면 주변 날씨를 볼 수 있습니다.',consent:'누르면 대략적인 위치가 Open-Meteo로 전송됩니다.',loading:'날씨 예보를 불러오는 중...',error:'날씨를 불러오지 못했습니다. 눌러서 다시 시도하세요.',rain:'오늘 비 올 확률',feels:'체감',source:'날씨 데이터: Open-Meteo',open:'5일 예보 열기',close:'예보 접기',today:'오늘'}
+  };
+  var CONDITIONS={
+    vi:{clear:'Trời quang',partly:'Ít mây',cloudy:'Nhiều mây',fog:'Có sương mù',drizzle:'Mưa phùn',rain:'Có mưa',snow:'Có tuyết',showers:'Mưa rào',storm:'Dông',unknown:'Thời tiết hiện tại'},
+    en:{clear:'Clear',partly:'Partly cloudy',cloudy:'Cloudy',fog:'Foggy',drizzle:'Drizzle',rain:'Rain',snow:'Snow',showers:'Showers',storm:'Thunderstorm',unknown:'Current weather'},
+    zh:{clear:'晴',partly:'少云',cloudy:'多云',fog:'有雾',drizzle:'毛毛雨',rain:'有雨',snow:'有雪',showers:'阵雨',storm:'雷雨',unknown:'当前天气'},
+    zht:{clear:'晴',partly:'少雲',cloudy:'多雲',fog:'有霧',drizzle:'毛毛雨',rain:'有雨',snow:'有雪',showers:'陣雨',storm:'雷雨',unknown:'目前天氣'},
+    th:{clear:'ท้องฟ้าแจ่มใส',partly:'มีเมฆบางส่วน',cloudy:'มีเมฆมาก',fog:'มีหมอก',drizzle:'ฝนปรอย',rain:'ฝนตก',snow:'หิมะตก',showers:'ฝนตกเป็นช่วง',storm:'พายุฝนฟ้าคะนอง',unknown:'สภาพอากาศปัจจุบัน'},
+    ru:{clear:'Ясно',partly:'Переменная облачность',cloudy:'Облачно',fog:'Туман',drizzle:'Морось',rain:'Дождь',snow:'Снег',showers:'Ливни',storm:'Гроза',unknown:'Текущая погода'},
+    ja:{clear:'晴れ',partly:'晴れ時々曇り',cloudy:'曇り',fog:'霧',drizzle:'霧雨',rain:'雨',snow:'雪',showers:'にわか雨',storm:'雷雨',unknown:'現在の天気'},
+    ko:{clear:'맑음',partly:'구름 조금',cloudy:'흐림',fog:'안개',drizzle:'이슬비',rain:'비',snow:'눈',showers:'소나기',storm:'뇌우',unknown:'현재 날씨'}
+  };
+  var LOCALES={vi:'vi-VN',en:'en-US',zh:'zh-CN',zht:'zh-TW',th:'th-TH',ru:'ru-RU',ja:'ja-JP',ko:'ko-KR'};
+
+  function lang(){
+    var l=document.documentElement.getAttribute('data-tl-lang')||'vi';
+    return TEXT[l]?l:'vi';
+  }
+  function tr(key){var l=lang();return (TEXT[l]&&TEXT[l][key])||TEXT.vi[key]||key;}
+  function safeLocation(){
+    try{
+      var p=JSON.parse(localStorage.getItem(LOCATION_KEY)||'null');
+      return p&&isFinite(Number(p.lat))&&isFinite(Number(p.lng))?p:null;
+    }catch(e){return null;}
+  }
+  function placeName(p){return String((p&&(p.locality||p.region||p.countryName))||'').trim();}
+  /* Khoảng 0,1 độ (~11 km): đủ cho dự báo khu vực mà không gửi GPS chính xác. */
+  function rounded(v){return Math.round(Number(v)*10)/10;}
+  function cacheKey(p){return rounded(p.lat)+','+rounded(p.lng);}
+  function weatherAllowed(){try{return localStorage.getItem(WEATHER_CONSENT_KEY)==='1';}catch(e){return false;}}
+  function allowWeather(){try{localStorage.setItem(WEATHER_CONSENT_KEY,'1');}catch(e){}}
+  function readCache(p){
+    try{
+      var c=JSON.parse(localStorage.getItem(WEATHER_CACHE_KEY)||'null');
+      return c&&c.key===cacheKey(p)&&Date.now()-Number(c.savedAt)<CACHE_MS&&c.data?c.data:null;
+    }catch(e){return null;}
+  }
+  function saveCache(p,data){
+    try{localStorage.setItem(WEATHER_CACHE_KEY,JSON.stringify({key:cacheKey(p),savedAt:Date.now(),data:data}));}catch(e){}
+  }
+  function weatherKind(code){
+    code=Number(code);
+    if(code===0)return 'clear';
+    if(code===1||code===2)return 'partly';
+    if(code===3)return 'cloudy';
+    if(code===45||code===48)return 'fog';
+    if(code>=51&&code<=57)return 'drizzle';
+    if((code>=61&&code<=67)||code===80)return 'rain';
+    if(code>=71&&code<=77)return 'snow';
+    if(code===81||code===82||code===85||code===86)return 'showers';
+    if(code>=95)return 'storm';
+    return 'unknown';
+  }
+  function weatherIcon(code,isDay){
+    var kind=weatherKind(code);
+    if(kind==='clear')return Number(isDay)===0?'🌙':'☀️';
+    if(kind==='partly')return Number(isDay)===0?'☁️':'🌤️';
+    if(kind==='cloudy')return '☁️';
+    if(kind==='fog')return '🌫️';
+    if(kind==='drizzle')return '🌦️';
+    if(kind==='rain')return '🌧️';
+    if(kind==='snow')return '🌨️';
+    if(kind==='showers')return '🌦️';
+    if(kind==='storm')return '⛈️';
+    return '🌡️';
+  }
+  function conditionText(code){var l=lang(),dict=CONDITIONS[l]||CONDITIONS.vi;return dict[weatherKind(code)]||dict.unknown;}
+  function num(v){v=Number(v);return isFinite(v)?Math.round(v):'–';}
+  function dayName(iso,index){
+    if(index===0)return tr('today');
+    try{return new Intl.DateTimeFormat(LOCALES[lang()]||'vi-VN',{weekday:'short'}).format(new Date(iso+'T12:00:00'));}catch(e){return iso;}
+  }
+  function injectStyle(){
+    if(document.getElementById('tlWeatherStyle'))return;
+    var style=document.createElement('style');style.id='tlWeatherStyle';
+    style.textContent=''
+      +'.tl-weather-widget{max-width:690px;margin-top:12px;border:1px solid rgba(255,255,255,.18);border-radius:16px;background:rgba(255,255,255,.1);color:#fff;overflow:hidden;box-shadow:0 10px 30px rgba(7,28,48,.12);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}'
+      +'.tl-weather-summary{appearance:none;-webkit-appearance:none;width:100%;min-height:62px;padding:10px 13px;border:0;background:transparent;color:inherit;display:grid;grid-template-columns:38px minmax(0,1fr) 24px;gap:10px;align-items:center;text-align:left;cursor:pointer;font:inherit}'
+      +'.tl-weather-summary:focus-visible{outline:3px solid rgba(255,255,255,.7);outline-offset:-3px}.tl-weather-icon{font-size:28px;line-height:1;text-align:center;filter:drop-shadow(0 3px 7px rgba(0,0,0,.18))}'
+      +'.tl-weather-copy{min-width:0;display:flex;flex-direction:column;gap:2px}.tl-weather-copy strong{font-size:14px;line-height:1.3;color:#fff}.tl-weather-copy small{font-size:12px;line-height:1.35;color:rgba(255,255,255,.82);white-space:normal}'
+      +'.tl-weather-chevron{width:22px;height:22px;display:grid;place-items:center;font-size:18px;transition:transform .2s ease}.tl-weather-summary[aria-expanded="true"] .tl-weather-chevron{transform:rotate(180deg)}'
+      +'.tl-weather-widget[data-state="needs-location"] .tl-weather-icon,.tl-weather-widget[data-state="loading"] .tl-weather-icon{filter:grayscale(.15)}'
+      +'.tl-weather-details{padding:0 12px 11px;border-top:1px solid rgba(255,255,255,.14)}.tl-weather-forecast{display:grid;grid-template-columns:repeat(5,minmax(76px,1fr));gap:6px;padding-top:10px}'
+      +'.tl-weather-day{min-width:0;padding:8px 5px;border-radius:11px;background:rgba(255,255,255,.1);text-align:center}.tl-weather-day strong,.tl-weather-day small{display:block}.tl-weather-day strong{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tl-weather-day-icon{display:block;font-size:20px;line-height:1.3;margin:3px 0}.tl-weather-day-temp{font-size:11px;font-weight:800}.tl-weather-day-rain{font-size:10px;color:rgba(255,255,255,.78);margin-top:2px}'
+      +'.tl-weather-attribution{display:block;margin:1px 12px 7px;color:rgba(255,255,255,.66)!important;font-size:9px;line-height:1.2;text-align:right;text-decoration:underline;text-underline-offset:2px}'
+      +'@media(max-width:760px){.tl-weather-widget{margin-top:10px;border-radius:14px}.tl-weather-summary{min-height:58px;padding:9px 11px;grid-template-columns:34px minmax(0,1fr) 22px;gap:8px}.tl-weather-icon{font-size:25px}.tl-weather-copy strong{font-size:13px}.tl-weather-copy small{font-size:11px}.tl-weather-forecast{overflow-x:auto;grid-template-columns:repeat(5,82px);scrollbar-width:thin;padding-bottom:3px}}';
+    document.head.appendChild(style);
+  }
+  function createWidget(){
+    var locationTools=document.querySelector('.tl-home-hero-v24 .tl-location-tools')||document.querySelector('.tl-location-tools');
+    if(!locationTools||document.getElementById('tlWeatherWidget'))return false;
+    injectStyle();
+    widget=document.createElement('div');widget.id='tlWeatherWidget';widget.className='tl-weather-widget';widget.setAttribute('data-state','idle');widget.setAttribute('data-tl-i18n-ignore','1');
+    summary=document.createElement('button');summary.type='button';summary.id='tlWeatherSummary';summary.className='tl-weather-summary';summary.setAttribute('aria-expanded','false');summary.setAttribute('aria-controls','tlWeatherDetails');
+    iconEl=document.createElement('span');iconEl.className='tl-weather-icon';iconEl.setAttribute('aria-hidden','true');iconEl.textContent='🌤️';
+    var copy=document.createElement('span');copy.className='tl-weather-copy';titleEl=document.createElement('strong');metaEl=document.createElement('small');copy.appendChild(titleEl);copy.appendChild(metaEl);
+    var chevron=document.createElement('span');chevron.className='tl-weather-chevron';chevron.setAttribute('aria-hidden','true');chevron.textContent='⌄';
+    summary.appendChild(iconEl);summary.appendChild(copy);summary.appendChild(chevron);
+    details=document.createElement('div');details.id='tlWeatherDetails';details.className='tl-weather-details';details.hidden=true;
+    forecastEl=document.createElement('div');forecastEl.className='tl-weather-forecast';
+    var source=document.createElement('a');source.className='tl-weather-attribution';source.href='https://open-meteo.com/';source.target='_blank';source.rel='noopener noreferrer';source.setAttribute('data-tl-weather-source','1');
+    details.appendChild(forecastEl);widget.appendChild(summary);widget.appendChild(details);widget.appendChild(source);
+    locationTools.insertAdjacentElement('afterend',widget);
+    summary.addEventListener('click',function(){
+      var p=safeLocation();
+      if(!p){var b=document.getElementById('tlUseLocation');if(b)b.click();return;}
+      if(widget.getAttribute('data-state')==='needs-consent'){allowWeather();loadWeather(p,true);return;}
+      if(widget.getAttribute('data-state')==='error'){loadWeather(p,true);return;}
+      var open=summary.getAttribute('aria-expanded')!=='true';summary.setAttribute('aria-expanded',open?'true':'false');summary.setAttribute('aria-label',open?tr('close'):tr('open'));details.hidden=!open;
+    });
+    return true;
+  }
+  function renderNoLocation(){
+    if(!widget)return;widget.setAttribute('data-state','needs-location');iconEl.textContent='📍';titleEl.textContent=tr('title');metaEl.textContent=tr('noLocation');forecastEl.textContent='';details.hidden=true;summary.setAttribute('aria-expanded','false');summary.setAttribute('aria-label',tr('noLocation'));
+    var a=widget.querySelector('[data-tl-weather-source]');if(a)a.textContent=tr('source');
+  }
+  function renderConsent(p){
+    if(!widget)return;widget.setAttribute('data-state','needs-consent');iconEl.textContent='🌤️';titleEl.textContent=tr('title');metaEl.textContent=(placeName(p)?placeName(p)+' · ':'')+tr('consent');forecastEl.textContent='';details.hidden=true;summary.setAttribute('aria-expanded','false');summary.setAttribute('aria-label',tr('consent'));
+    var a=widget.querySelector('[data-tl-weather-source]');if(a)a.textContent=tr('source');
+  }
+  function renderLoading(p){
+    widget.setAttribute('data-state','loading');iconEl.textContent='🌤️';titleEl.textContent=tr('title');metaEl.textContent=(placeName(p)?placeName(p)+' · ':'')+tr('loading');summary.setAttribute('aria-label',tr('loading'));
+  }
+  function renderError(p){
+    widget.setAttribute('data-state','error');iconEl.textContent='⚠️';titleEl.textContent=tr('title');metaEl.textContent=(placeName(p)?placeName(p)+' · ':'')+tr('error');summary.setAttribute('aria-label',tr('error'));
+  }
+  function renderWeather(p,data){
+    if(!data||!data.current||!data.daily){renderError(p);return;}
+    widget.__tlWeatherData=data;widget.__tlWeatherLocation=p;widget.setAttribute('data-state','ready');
+    var c=data.current,d=data.daily,code=Number(c.weather_code),prob=d.precipitation_probability_max&&d.precipitation_probability_max.length?num(d.precipitation_probability_max[0]):'–';
+    iconEl.textContent=weatherIcon(code,c.is_day);titleEl.textContent=num(c.temperature_2m)+'°C · '+conditionText(code);
+    var where=placeName(p)||tr('title');metaEl.textContent=where+' · '+tr('rain')+' '+prob+'% · '+tr('feels')+' '+num(c.apparent_temperature)+'°C';
+    forecastEl.textContent='';
+    var times=Array.isArray(d.time)?d.time:[];
+    times.slice(0,5).forEach(function(iso,i){
+      var day=document.createElement('div');day.className='tl-weather-day';
+      var name=document.createElement('strong');name.textContent=dayName(iso,i);
+      var ico=document.createElement('span');ico.className='tl-weather-day-icon';ico.setAttribute('aria-hidden','true');ico.textContent=weatherIcon(d.weather_code&&d.weather_code[i],1);
+      var temp=document.createElement('small');temp.className='tl-weather-day-temp';temp.textContent=num(d.temperature_2m_max&&d.temperature_2m_max[i])+'° / '+num(d.temperature_2m_min&&d.temperature_2m_min[i])+'°';
+      var rain=document.createElement('small');rain.className='tl-weather-day-rain';rain.textContent='💧 '+num(d.precipitation_probability_max&&d.precipitation_probability_max[i])+'%';
+      day.appendChild(name);day.appendChild(ico);day.appendChild(temp);day.appendChild(rain);forecastEl.appendChild(day);
+    });
+    var a=widget.querySelector('[data-tl-weather-source]');if(a)a.textContent=tr('source');
+    summary.setAttribute('aria-label',summary.getAttribute('aria-expanded')==='true'?tr('close'):tr('open'));
+  }
+  function apiUrl(p){
+    var q=new URLSearchParams({
+      latitude:String(rounded(p.lat)),longitude:String(rounded(p.lng)),
+      current:'temperature_2m,apparent_temperature,weather_code,is_day',
+      daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+      timezone:'auto',forecast_days:'5'
+    });
+    return 'https://api.open-meteo.com/v1/forecast?'+q.toString();
+  }
+  function loadWeather(p,force){
+    if(!widget||!p){renderNoLocation();return;}
+    var key=cacheKey(p),state=widget.getAttribute('data-state');
+    if(!force&&activeKey===key){
+      if(state==='ready'&&widget.__tlWeatherData){widget.__tlWeatherLocation=p;renderWeather(p,widget.__tlWeatherData);}
+      else if(state==='loading')renderLoading(p);
+      else if(state==='error')renderError(p);
+      return;
+    }
+    var cached=!force&&readCache(p);if(cached){renderWeather(p,cached);return;}
+    activeKey=key;renderLoading(p);var requestId=++activeRequest;
+    fetch(apiUrl(p),{method:'GET',mode:'cors',credentials:'omit',headers:{Accept:'application/json'}}).then(function(res){if(!res.ok)throw new Error('weather '+res.status);return res.json();}).then(function(data){
+      if(requestId!==activeRequest)return;saveCache(p,data);renderWeather(p,data);
+    }).catch(function(){if(requestId===activeRequest)renderError(p);});
+  }
+  function refresh(force){var p=safeLocation();if(!p){activeRequest++;activeKey='';renderNoLocation();return;}if(!weatherAllowed()){renderConsent(p);return;}loadWeather(p,!!force);}
+  function rerenderLanguage(){
+    if(!widget)return;var state=widget.getAttribute('data-state');
+    if(state==='ready'&&widget.__tlWeatherData)renderWeather(widget.__tlWeatherLocation||safeLocation(),widget.__tlWeatherData);
+    else if(state==='loading')renderLoading(safeLocation());
+    else if(state==='error')renderError(safeLocation());
+    else if(state==='needs-consent')renderConsent(safeLocation());
+    else renderNoLocation();
+  }
+  function boot(){
+    if(!createWidget())return;refresh(false);
+    document.addEventListener('tl:locationchange',function(e){var p=e&&e.detail&&isFinite(Number(e.detail.lat))?e.detail:safeLocation();if(!p){renderNoLocation();return;}if(!weatherAllowed()){renderConsent(p);return;}loadWeather(p,false);});
+    if(window.MutationObserver){new MutationObserver(function(m){for(var i=0;i<m.length;i++){if(m[i].attributeName==='data-tl-lang'){rerenderLanguage();break;}}}).observe(document.documentElement,{attributes:true,attributeFilter:['data-tl-lang']});}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })();
 
 
@@ -3427,8 +3634,20 @@
     currentLang=lang;
     syncPickerLabel();
     scan(document);
+
+    /* V17.95.2: safety-net for homepage hero headline. */
+    var heroTitle=document.querySelector('.tl-home-hero-v24 h2');
+    if(heroTitle){
+      heroTitle.textContent=dynamic('Tìm đúng nơi bạn cần, ngay quanh mình.',currentLang);
+    }
+
     updateLangBlocks();updateClock();
-    setTimeout(function(){scan(document);updateLangBlocks();updateClock();},40);
+    setTimeout(function(){
+      scan(document);
+      var heroTitle2=document.querySelector('.tl-home-hero-v24 h2');
+      if(heroTitle2)heroTitle2.textContent=dynamic('Tìm đúng nơi bạn cần, ngay quanh mình.',currentLang);
+      updateLangBlocks();updateClock();
+    },40);
   }
 
   var nativeConfirm=window.confirm?window.confirm.bind(window):null;
