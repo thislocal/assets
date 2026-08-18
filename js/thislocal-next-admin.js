@@ -1,9 +1,9 @@
-/* THIS LOCAL Next Admin v18.10 — owner claim review add-on. */
+/* THIS LOCAL Next Admin v18.11 — owner claims and dynamic locality pages. */
 (function () {
   'use strict';
 
-  if (window.__TL_NEXT_ADMIN_V1810__) return;
-  window.__TL_NEXT_ADMIN_V1810__ = true;
+  if (window.__TL_NEXT_ADMIN_V1811__) return;
+  window.__TL_NEXT_ADMIN_V1811__ = true;
 
   var path = (location.pathname || '').toLowerCase();
   if (!/^\/p\/(?:quan-tri|quan-tri-this-local|this-local-admin|admin)\.html\/?$/.test(path)) return;
@@ -73,7 +73,7 @@
       var actions = node('div', 'tla-actions');
       function send(decision, trigger) {
         trigger.disabled = true;
-        api('?action=reviewClaim', { method: 'POST', body: JSON.stringify({ id: claim.id, decision: decision, admin_note: clean(note.value) }) })
+        api('?action=reviewClaim', { method: 'POST', body: JSON.stringify({ action: 'reviewClaim', id: claim.id, decision: decision, admin_note: clean(note.value) }) })
           .then(function () { return refreshList(); }).catch(function (error) {
             var old = card.querySelector('.tla-error'); if (old) old.remove(); card.appendChild(node('div', 'tla-error', error.message || String(error)));
           }).finally(function () { trigger.disabled = false; });
@@ -106,10 +106,106 @@
         if (!claims.length) { list.appendChild(node('div', 'tla-status', 'Không có yêu cầu trong trạng thái này.')); return; }
         claims.forEach(function (claim) { list.appendChild(claimCard(claim, load)); });
       }).catch(function (error) {
-        list.replaceChildren(node('div', 'tla-error', (error.message || String(error)) + '\nHãy triển khai mô-đun API và SQL v18.10 trước.'));
+        list.replaceChildren(node('div', 'tla-error', (error.message || String(error)) + '\nHãy triển khai API quản trị mới nhất trước.'));
       });
     }
     select.onchange = load; return load();
+  }
+
+  function renderLocalities(content) {
+    content.replaceChildren();
+    var title = node('div', 'tla-section-head');
+    var titleCopy = node('div'); titleCopy.appendChild(node('h2', '', 'Trang địa phương'));
+    titleCopy.appendChild(node('p', 'tla-muted', 'Thêm hoặc ẩn địa phương tại đây. Menu máy tính và điện thoại sẽ tự cập nhật.'));
+    title.appendChild(titleCopy); content.appendChild(title);
+
+    var form = node('form', 'tla-grid');
+    function inputField(label, name, type, wide) {
+      var wrap = node('div', 'tla-field' + (wide ? ' wide' : ''));
+      wrap.appendChild(node('label', '', label));
+      var input = node(type === 'textarea' ? 'textarea' : 'input');
+      if (type !== 'textarea') input.type = type || 'text';
+      input.name = name; wrap.appendChild(input); form.appendChild(wrap); return input;
+    }
+    var idInput = inputField('ID (để trống sẽ tự tạo)', 'id');
+    var nameInput = inputField('Tên địa phương *', 'name_vi');
+    var codeInput = inputField('Mã tỉnh/thành', 'province_code');
+    var countryInput = inputField('Mã quốc gia', 'country_code'); countryInput.value = 'VN';
+    var slugInput = inputField('Slug', 'slug');
+    var pageInput = inputField('URL trang Blogger *', 'page_url', 'text', true); pageInput.placeholder = '/p/kham-pha-lao-cai.html';
+    var summaryInput = inputField('Mô tả ngắn trên menu', 'summary_vi', 'textarea', true); summaryInput.placeholder = 'Điểm đến · ăn uống · lưu trú · dịch vụ';
+    var sortInput = inputField('Thứ tự', 'sort_order', 'number'); sortInput.value = '100';
+
+    var typeWrap = node('div', 'tla-field'); typeWrap.appendChild(node('label', '', 'Loại'));
+    var typeSelect = node('select');
+    [['province','Tỉnh'],['city','Thành phố'],['district','Quận/huyện'],['area','Khu vực']].forEach(function (pair) {
+      var option = node('option', '', pair[1]); option.value = pair[0]; typeSelect.appendChild(option);
+    });
+    typeWrap.appendChild(typeSelect); form.appendChild(typeWrap);
+
+    var activeWrap = node('div', 'tla-field'); activeWrap.appendChild(node('label', '', 'Hiển thị trên menu'));
+    var activeSelect = node('select');
+    [['true','Có'],['false','Ẩn']].forEach(function (pair) { var option = node('option', '', pair[1]); option.value = pair[0]; activeSelect.appendChild(option); });
+    activeWrap.appendChild(activeSelect); form.appendChild(activeWrap);
+
+    var actions = node('div', 'tla-actions');
+    var save = node('button', 'tla-btn primary', 'Lưu địa phương'); save.type = 'submit';
+    var reset = node('button', 'tla-btn', 'Tạo mục mới'); reset.type = 'button';
+    actions.appendChild(save); actions.appendChild(reset); form.appendChild(actions); content.appendChild(form);
+    var feedback = node('div'); content.appendChild(feedback);
+    content.appendChild(node('p', 'tla-muted', 'Trong nội dung trang Blogger, dùng thẻ gốc: data-page-type="locality", data-province-code và data-province.'));
+    var list = node('div', 'tla-list'); content.appendChild(list);
+
+    function clearForm() {
+      form.reset(); idInput.value = ''; countryInput.value = 'VN'; sortInput.value = '100'; typeSelect.value = 'province'; activeSelect.value = 'true'; feedback.replaceChildren();
+    }
+    function edit(item) {
+      idInput.value = clean(item.id); nameInput.value = clean(item.name_vi); codeInput.value = clean(item.province_code);
+      countryInput.value = clean(item.country_code) || 'VN'; slugInput.value = clean(item.slug); pageInput.value = clean(item.page_url);
+      summaryInput.value = clean(item.summary_vi); sortInput.value = String(item.sort_order === undefined ? 100 : item.sort_order);
+      typeSelect.value = clean(item.locality_type) || 'province'; activeSelect.value = item.active === false ? 'false' : 'true';
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function card(item) {
+      var article = node('article', 'tla-item');
+      var badges = node('div', 'tla-badges'); badges.appendChild(node('span', 'tla-badge ' + (item.active ? 'ok' : 'pending'), item.active ? 'ĐANG HIỆN' : 'ĐANG ẨN')); article.appendChild(badges);
+      article.appendChild(node('strong', '', clean(item.name_vi) || clean(item.id)));
+      article.appendChild(node('small', '', (clean(item.country_code) || 'VN') + ' · mã ' + (clean(item.province_code) || '—') + ' · thứ tự ' + String(item.sort_order || 0)));
+      var link = node('a', '', clean(item.page_url)); link.href = item.page_url; link.target = '_blank'; link.rel = 'noopener noreferrer'; article.appendChild(link);
+      if (clean(item.summary_vi)) article.appendChild(node('small', '', clean(item.summary_vi)));
+      var cardActions = node('div', 'tla-actions');
+      var editButton = node('button', 'tla-btn', 'Sửa'); editButton.type = 'button'; editButton.onclick = function () { edit(item); };
+      var deleteButton = node('button', 'tla-btn danger', 'Xóa'); deleteButton.type = 'button';
+      deleteButton.onclick = function () {
+        if (!confirm('Xóa địa phương "' + clean(item.name_vi) + '" khỏi hệ thống?')) return;
+        deleteButton.disabled = true;
+        api('', { method: 'POST', body: JSON.stringify({ action: 'deleteLocality', id: item.id }) })
+          .then(load).catch(function (error) { feedback.replaceChildren(node('div', 'tla-error', error.message || String(error))); })
+          .finally(function () { deleteButton.disabled = false; });
+      };
+      cardActions.appendChild(editButton); cardActions.appendChild(deleteButton); article.appendChild(cardActions); return article;
+    }
+    function load() {
+      list.replaceChildren(node('div', 'tla-status', 'Đang tải địa phương…'));
+      return api('?action=localities&country_code=VN').then(function (data) {
+        var rows = data.localities || []; list.replaceChildren();
+        if (!rows.length) { list.appendChild(node('div', 'tla-status', 'Chưa có địa phương nào.')); return; }
+        rows.forEach(function (item) { list.appendChild(card(item)); });
+      }).catch(function (error) { list.replaceChildren(node('div', 'tla-error', error.message || String(error))); });
+    }
+    form.onsubmit = function (event) {
+      event.preventDefault(); save.disabled = true; feedback.replaceChildren(node('div', 'tla-status', 'Đang lưu…'));
+      var locality = {
+        id: clean(idInput.value), name_vi: clean(nameInput.value), province_code: clean(codeInput.value), country_code: clean(countryInput.value) || 'VN',
+        slug: clean(slugInput.value), page_url: clean(pageInput.value), summary_vi: clean(summaryInput.value), sort_order: Number(sortInput.value || 100),
+        locality_type: typeSelect.value, active: activeSelect.value === 'true'
+      };
+      api('', { method: 'POST', body: JSON.stringify({ action: 'saveLocality', locality: locality }) })
+        .then(function () { feedback.replaceChildren(node('div', 'tla-status', 'Đã lưu địa phương.')); return load(); })
+        .catch(function (error) { feedback.replaceChildren(node('div', 'tla-error', error.message || String(error))); })
+        .finally(function () { save.disabled = false; });
+    };
+    reset.onclick = clearForm; return load();
   }
 
   function ensureNav() {
@@ -117,14 +213,25 @@
     var root = document.getElementById('tlAdminV2');
     var nav = root && root.querySelector('.tla-nav');
     var content = root && root.querySelector('#tlaContent');
-    if (!nav || !content || nav.querySelector('[data-tlx-claims]')) return;
+    if (!nav || !content) return;
     adding = true;
-    var tab = node('button', '', 'Yêu cầu sở hữu'); tab.type = 'button'; tab.setAttribute('data-tlx-claims', 'true');
-    tab.onclick = function () {
-      Array.prototype.forEach.call(nav.querySelectorAll('button'), function (item) { item.classList.remove('is-active'); });
-      tab.classList.add('is-active'); renderClaims(content);
-    };
-    nav.appendChild(tab); adding = false;
+    if (!nav.querySelector('[data-tlx-claims]')) {
+      var claimsTab = node('button', '', 'Yêu cầu sở hữu'); claimsTab.type = 'button'; claimsTab.setAttribute('data-tlx-claims', 'true');
+      claimsTab.onclick = function () {
+        Array.prototype.forEach.call(nav.querySelectorAll('button'), function (item) { item.classList.remove('is-active'); });
+        claimsTab.classList.add('is-active'); renderClaims(content);
+      };
+      nav.appendChild(claimsTab);
+    }
+    if (!nav.querySelector('[data-tlx-localities]')) {
+      var localityTab = node('button', '', 'Địa phương'); localityTab.type = 'button'; localityTab.setAttribute('data-tlx-localities', 'true');
+      localityTab.onclick = function () {
+        Array.prototype.forEach.call(nav.querySelectorAll('button'), function (item) { item.classList.remove('is-active'); });
+        localityTab.classList.add('is-active'); renderLocalities(content);
+      };
+      nav.appendChild(localityTab);
+    }
+    adding = false;
   }
 
   var observer = new MutationObserver(ensureNav);
