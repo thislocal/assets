@@ -1,4 +1,4 @@
-/* THIS LOCAL PUBLIC V17.96 - WEATHER */
+/* THIS LOCAL PUBLIC V18.09 - CUSTOM DOMAIN, PWA & SOCIAL SHARING */
 /* By Vinh Béo */
 
 /* ---- original script block 6 ---- */
@@ -15,7 +15,7 @@
   window.TL_DATA_API_URL=VLC_API_URL;
   window.TL_GUIDE_API_URL=VLC_API_URL;
   window.TL_GUIDE_ENGINE_VERSION='2026-08-16-auto-location-v19';
-  window.TL_PUBLIC_BUILD='17.96-weather';
+  window.TL_PUBLIC_BUILD='18.09-domain-pwa-og';
 
   /* Danh mục luôn lấy qua API dữ liệu; Blogger không đọc trực tiếp Google Sheets/Supabase. */
   var CATEGORY_CATALOG_CACHE_KEY='tl_category_catalog_v4';
@@ -4743,7 +4743,7 @@
         requesting=false;btn.disabled=false;btn.onclick=null;
         if(err&&err.code===1){
           clearStaleLocation();
-          setNotice('denied','Quyền vị trí đang bị chặn','Bật quyền Vị trí cho thislocal.blogspot.com trong cài đặt trình duyệt, sau đó bấm Thử lại.','Thử lại',true);
+          setNotice('denied','Quyền vị trí đang bị chặn','Bật quyền Vị trí cho '+(location.hostname||'thislocal.net')+' trong cài đặt trình duyệt, sau đó bấm Thử lại.','Thử lại',true);
         }else{
           setNotice('error','Chưa lấy được vị trí','Hãy kiểm tra GPS/kết nối mạng rồi bấm Thử lại.','Thử lại',!!manual);
         }
@@ -4753,7 +4753,7 @@
       if(state==='granted'){setOpen(false);requestLocation(false);return;}
       if(state==='denied'){
         clearStaleLocation();
-        setNotice('denied','Quyền vị trí đang bị chặn','Bật quyền Vị trí cho thislocal.blogspot.com trong cài đặt trình duyệt, sau đó bấm Thử lại.','Thử lại',false);
+        setNotice('denied','Quyền vị trí đang bị chặn','Bật quyền Vị trí cho '+(location.hostname||'thislocal.net')+' trong cài đặt trình duyệt, sau đó bấm Thử lại.','Thử lại',false);
         return;
       }
       /* state=prompt: chủ động gọi Geolocation để trình duyệt hiện hộp xin quyền trên cả PC và mobile. */
@@ -4837,6 +4837,17 @@
     /* V17.11: không observe toàn bộ body. Search page chỉ cần tạo/bind một lần. */
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+})();
+
+/* THIS LOCAL V18.09: enable installable PWA on the custom domain. */
+(function(){
+  'use strict';
+  if(!('serviceWorker' in navigator)||!/(^|\.)thislocal\.net$/i.test(location.hostname))return;
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(error){
+      if(window.console&&console.warn)console.warn('THIS LOCAL service worker:',error);
+    });
+  });
 })();
 
 
